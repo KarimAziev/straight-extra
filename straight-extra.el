@@ -404,9 +404,8 @@ Return the results of all forms as a list."
 
 The saved data can be restored with `straight-extra-unserialize'."
   (unless (file-exists-p
-           (file-exists-p
-            (file-name-directory
-             filename)))
+           (file-name-directory
+            filename))
     (make-directory (file-name-directory
                      filename)
                     'parents))
@@ -590,9 +589,8 @@ Arguments BOUND, NOERROR, COUNT has the same meaning as `re-search-forward'."
         (t
          (when-let ((data (straight-extra-fetch-json
                            "https://melpa.org/archive.json")))
-           (unless (hash-table-p straight-extra-melpa-packages-archive-hash)
-             (setq straight-extra-melpa-packages-archive-hash (make-hash-table
-                                                               :test 'equal)))
+           (setq straight-extra-melpa-packages-archive-hash (make-hash-table
+                                                               :test 'equal))
            (dolist (cell data)
              (puthash (car cell)
                       (cdr cell)
