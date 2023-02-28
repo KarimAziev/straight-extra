@@ -1,0 +1,47 @@
+* straight-extra
+
+Extra utils for straight.el.
+
+** Installation
+
+Required dependencies:
+
+- ~emacs~ >= 28.1
+- [[https://github.com/KarimAziev/prettier-elisp][prettier-elisp]] (optional)
+- [[https://github.com/magit/magit][magit]] (optional)
+- [[https://github.com/KarimAziev/git-util][git-util]] (optional)
+- [[https://github.com/KarimAziev/gh-repo][gh-repo]] (optional)
+
+*** Manual
+
+Download the source code and put it wherever you like, e.g. into =~/.emacs.d/straight-extra/=
+
+#+begin_src shell :eval no
+git clone https://github.com/KarimAziev/straight-extra.git ~/.emacs.d/straight-extra/
+#+end_src
+
+Add the downloaded directory to the load path:
+
+#+begin_src elisp :eval no
+(add-to-list 'load-path "~/.emacs.d/straight-extra/")
+(require 'straight-extra)
+#+end_src
+
+#+begin_src elisp :eval no
+(use-package straight-extra
+  :straight (straight-extra
+             :repo "KarimAziev/straight-extra"
+             :type git
+             :host github)
+  :bind (("<f12>" . straight-extra-transient-menu)
+         ("C-c u" . straight-extra-jump-to-package-config)
+         (:map straight-extra-minibuffer-keymap
+               ("C-j" . straight-extra-browse-preview)
+               ("C-c o" . straight-extra-browse-in-other-window)))
+  :commands (straight-extra-jump-to-package-config
+             straight-extra-jump-to-uncommited-repo
+             straight-extra-install-package
+             straight-extra-browse-package
+             straight-extra-insert-use-package))
+#+end_src
+
