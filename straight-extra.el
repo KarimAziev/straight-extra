@@ -621,12 +621,14 @@ Arguments BOUND, NOERROR, COUNT has the same meaning as `re-search-forward'."
 (defun straight-extra-browse-preview ()
   "Browse current package without exiting minibuffer."
   (interactive)
-  (let ((current
-         (car
-          (straight-extra-get-current-candidate))))
+  (when-let ((current
+              (straight-extra-get-current-candidate)))
     (with-minibuffer-selected-window
       (straight-extra-browse-action
-       current))))
+       (car
+        (split-string (straight-extra-s-strip-props
+                       current)
+                      nil t))))))
 
 (defvar straight-extra-minibuffer-keymap
   (let ((map (make-sparse-keymap)))
@@ -662,10 +664,11 @@ Arguments BOUND, NOERROR, COUNT has the same meaning as `re-search-forward'."
                         (seq-copy packages)))))
     (minibuffer-with-setup-hook
         (lambda ()
-          (use-local-map
-           (let ((map (copy-keymap (make-sparse-keymap))))
-             (set-keymap-parent map (current-local-map))
-             map)))
+          (when (minibufferp)
+            (use-local-map
+             (let ((map (copy-keymap straight-extra-minibuffer-keymap)))
+               (set-keymap-parent map (current-local-map))
+               map))))
       (car (split-string (completing-read "Which recipe? "
                                           items
                                           predicate
@@ -809,6 +812,7 @@ If DERIVED-P is non-nil, test with `derived-mode-p', otherwise use `eq'."
                 (lambda (buf)
                   (memq (buffer-local-value 'major-mode buf) modes)))
               (or buffer-list (buffer-list))))
+
 (defun straight-extra-browse-xwidget-in-other-window (&optional fn &rest args)
   "Apply FN with ARGS in left or right window.
 If windows doesn't exists, split current window."
@@ -861,7 +865,7 @@ If windows doesn't exists, split current window."
 
 (defun straight-extra-browse-url (url)
   "Try to browse URL with `eaf-open-browser', `xwidget' or `eww'."
-  (cond ((display-graphic-p)
+  (cond ((not (display-graphic-p))
          (browse-url url))
         ((fboundp 'eaf-open-browser)
          (eaf-open-browser url))
@@ -882,15 +886,13 @@ If windows doesn't exists, split current window."
 
 (defun straight-extra-browse-action (package-name)
   "Browse PACKAGE-NAME with xwidget."
-  
   (when-let ((url (straight-extra-get-url package-name)))
     (if (active-minibuffer-window)
         (with-selected-window (selected-window)
           (straight-extra-browse-xwidget-in-other-window
            'straight-extra-browse-url url))
       (straight-extra-browse-xwidget-in-other-window
-       'straight-extra-browse-url url))
-    (straight-extra-browse-xwidget-in-other-window url)))
+       'straight-extra-browse-url url))))
 
 ;;;###autoload
 (defun straight-extra-repo-status ()
@@ -1147,7 +1149,8 @@ HASH must be a hash table mapping package name strings to recipes."
   (let* ((recipes
           (reverse
            (mapcar #'straight-extra-s-strip-props (copy-tree (hash-table-keys
-                                                              hash)))))
+                                                              (copy-hash-table
+                                                               hash))))))
          (annotfn (straight-extra--package-annotation hash))
          (metadata `(metadata (category . straight-recipe)
                               (annotation-function . ,annotfn))))
@@ -1194,25 +1197,25 @@ or whitespace.
 FILTER is a function accepting one argument: a straight style recipe plist.
 If it returns nil, the package is not considered a selection candidate."
   (interactive)
-  (minibuffer-with-setup-hook
-      (lambda ()
-        (when (minibufferp)
+  (let ((recipes-repo (mapcar #'symbol-name
+                              straight-recipe-repositories)))
+    (minibuffer-with-setup-hook
+        (lambda ()
           (use-local-map
            (let ((map (make-sparse-keymap)))
              (define-key map (kbd "C-j")
                          #'straight-extra-preview-installed-location)
-             (make-composed-keymap map (current-local-map))))))
-    (let* ((recipes-repo (mapcar #'symbol-name
-                                 straight-recipe-repositories))
-           (package
-            (completing-read
-             "Package "
-             (straight-extra--package-completion
-              (copy-hash-table
-               straight--recipe-cache))
-             (lambda (it)
-               (not (member it recipes-repo))))))
-      (straight-extra-jump-to-installed-package package))))
+             (set-keymap-parent map (current-local-map))
+             map)))
+      (let ((package
+             (completing-read
+              "Package "
+              (straight-extra--package-completion
+               (copy-hash-table
+                straight--recipe-cache))
+              (lambda (it)
+                (not (member it recipes-repo))))))
+        (straight-extra-jump-to-installed-package package)))))
 
 ;;;###autoload (autoload 'straight-extra-transient-menu "straight-extra.el" nil t)
 (transient-define-prefix straight-extra-transient-menu ()
