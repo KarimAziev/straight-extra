@@ -35,7 +35,7 @@
 
 (defcustom straight-extra-save-use-package-file user-emacs-directory
   "Where to save packages."
-  :group 'straight-extra-save-use-package-file
+  :group 'straight-extra
   :type '(radio :tag "Where to save packages."
                 (file :tag "File")
                 (directory :tag "Directory")
@@ -67,7 +67,7 @@
 (defvar straight-extra--func-types
   (list
    (cons 'defun 3)
-   (cons 'defmacro 3)
+   (cons 'defmacro 2)
    (cons 'defsubst 3)
    (cons 'defhydra 3)
    (cons 'transient-define-prefix 3)
@@ -187,11 +187,7 @@
                (nth (1+ pos) sexp))
               ((guard (and pos))
                (nth pos sexp)))))
-      (when (stringp doc-str)
-        (replace-regexp-in-string
-         "[\n\r\f]" "\s"
-         (or doc-str
-             ""))))))
+      doc-str)))
 (defun straight-extra-read-sexp (item &optional extra-props)
   "Parse ITEM and return plist with EXTRA-PROPS."
   (let ((result (straight-extra--parse-sexp item extra-props)))
@@ -304,21 +300,18 @@
                   (setq props (plist-put props :declared t)))
                  ((guard
                    (assq type straight-extra--func-types))
-                  (let ((args (straight-extra--format-args
-                               (seq-find
-                                #'proper-list-p
-                                item))))
+                  (let ((args (seq-find
+                               #'proper-list-p
+                               item)))
                     (setq props (plist-put props :args args))
                     (when (and (assq type
                                      straight-extra--interactive-types)
                                (eq 'interactive
                                    (if doc
-                                       (car-safe
-                                        (car-safe
-                                         (cdr-safe
-                                          (member
-                                           doc
-                                           item))))
+                                       (cadr
+                                        (member
+                                         doc
+                                         item))
                                      (car-safe
                                       (nth
                                        (cdr
@@ -334,16 +327,17 @@
                                straight-extra--var-types)))
                   (setq props (plist-put props :keymap
                                          (or (eq type 'defvar-keymap)
-                                             (when-let* ((value (nth 2 item))
-                                                         (vals
-                                                          (and (listp value)
-                                                               (symbolp
-                                                                (car value))
-                                                               (memq (car
-                                                                      value)
-                                                                     '(let let*))
-                                                               (car (seq-drop
-                                                                     value 1)))))
+                                             (when-let*
+                                                 ((value (nth 2 item))
+                                                  (vals
+                                                   (and (listp value)
+                                                        (symbolp
+                                                         (car value))
+                                                        (memq (car
+                                                               value)
+                                                              '(let let*))
+                                                        (car (seq-drop
+                                                              value 1)))))
                                                (when (and (listp vals)
                                                           (listp (car vals)))
                                                  (seq-find
@@ -1624,6 +1618,8 @@ PACKAGE should be either string or symbol."
       (?o
        (insert "(use-package " (read-string "Package:\s")" )")))))
 
+(defvar straight-extra-last-written-file nil)
+
 ;;;###autoload
 (defun straight-extra-install-package (package &optional outfile insert-pos)
   "Install PACKAGE and write it to OUTFILE at INSERT-POS."
@@ -1641,6 +1637,25 @@ PACKAGE should be either string or symbol."
                      nil)
                     ((and outfile)
                      outfile)
+                    ((and (not straight-extra-save-use-package-file)
+                          (not straight-extra-last-written-file))
+                     (setq straight-extra-last-written-file
+                           (read-file-name
+                            (format
+                             "Save %s to: "
+                             package)
+                            user-emacs-directory)))
+                    ((and straight-extra-last-written-file
+                          (not straight-extra-save-use-package-file))
+                     (read-file-name (format
+                                      "Save %s to: "
+                                      package)
+                                     (if (file-directory-p
+                                          straight-extra-last-written-file)
+                                         straight-extra-last-written-file
+                                       (file-name-directory
+                                        straight-extra-last-written-file)))
+                     (file-directory-p straight-extra-save-use-package-file))
                     ((functionp
                       straight-extra-save-use-package-file)
                      (funcall
@@ -1695,7 +1710,8 @@ PACKAGE should be either string or symbol."
         (prettier-elisp))
       (unless (get-buffer-window (current-buffer))
         (pop-to-buffer-same-window (current-buffer))))
-    (straight-extra-find-readme-other-window-for-current package)))
+    (with-selected-window (selected-window)
+      (straight-extra-find-readme-other-window-for-current package))))
 
 (defun straight-extra-serialize (data filename)
   "Serialize DATA to FILENAME.
