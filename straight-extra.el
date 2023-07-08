@@ -1965,6 +1965,11 @@ PACKAGE should be either string or symbol."
                      nil)
                     ((and outfile)
                      outfile)
+                    ((functionp
+                      straight-extra-save-use-package-file)
+                     (funcall
+                      straight-extra-save-use-package-file
+                      package))
                     ((and (not straight-extra-save-use-package-file)
                           (not straight-extra-last-written-file))
                      (setq straight-extra-last-written-file
@@ -1974,7 +1979,14 @@ PACKAGE should be either string or symbol."
                              package)
                             user-emacs-directory)))
                     ((and straight-extra-last-written-file
-                          (not straight-extra-save-use-package-file))
+                          (or (not straight-extra-save-use-package-file)
+                              (and
+                               (stringp straight-extra-save-use-package-file)
+                               (file-directory-p
+                                straight-extra-save-use-package-file)
+                               (file-in-directory-p
+                                straight-extra-last-written-file
+                                straight-extra-save-use-package-file))))
                      (read-file-name (format
                                       "Save %s to: "
                                       package)
@@ -1982,13 +1994,11 @@ PACKAGE should be either string or symbol."
                                           straight-extra-last-written-file)
                                          straight-extra-last-written-file
                                        (file-name-directory
-                                        straight-extra-last-written-file)))
-                     (file-directory-p straight-extra-save-use-package-file))
-                    ((functionp
-                      straight-extra-save-use-package-file)
-                     (funcall
-                      straight-extra-save-use-package-file
-                      package))
+                                        straight-extra-last-written-file))
+                                     nil
+                                     nil
+                                     (file-name-nondirectory
+                                      straight-extra-last-written-file)))
                     ((file-directory-p
                       straight-extra-save-use-package-file)
                      (read-file-name (format "Save %s to: "
@@ -2000,6 +2010,7 @@ PACKAGE should be either string or symbol."
     (while (file-directory-p dest)
       (setq dest (read-file-name "File"
                                  dest)))
+    (setq straight-extra-last-written-file dest)
     (unless (file-exists-p dest)
       (unless (file-exists-p (file-name-directory dest))
         (make-directory (file-name-directory
