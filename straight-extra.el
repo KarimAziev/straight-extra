@@ -2475,7 +2475,7 @@ With prefix argument FORCE to refetch archives."
   (when-let ((current
               (straight-extra-minibuffer-item)))
     (run-with-timer 0 nil
-                    'straight-extra-browse-action
+                    #'straight-extra-browse-action
                     (car
                      (split-string
                       (straight-extra-s-strip-props
@@ -3151,7 +3151,7 @@ HASH must be a hash table mapping package name strings to recipes."
               (minibuffer-contents-no-properties)))))))
 
 
-;;;###autoload
+
 (defun straight-extra-preview-installed-location ()
   "Find `use-package' call with current minibuffer candidate."
   (interactive)
@@ -3160,6 +3160,47 @@ HASH must be a hash table mapping package name strings to recipes."
       (straight-extra-jump-to-installed-package
        package))))
 
+(defun straight-extra-jump-to-config-other-window ()
+  "Jump to selected in minibuffer package config in other window."
+  (interactive)
+  (when-let ((package (straight-extra-minibuffer-item)))
+    (let* ((wind (minibuffer-selected-window))
+           (buff (window-buffer wind)))
+      (add-to-history 'straight-extra-installed-packages-history package)
+      (run-with-timer 0 nil (lambda ()
+                              (select-window
+                               (or
+                                (window-right wind)
+                                (window-left wind)
+                                (split-window-right nil wind)))
+                              (with-current-buffer buff
+                                (straight-extra-jump-to-installed-package
+                                 package))))
+      (let ((inhibit-message t))
+        (abort-minibuffers)))))
+
+(defvar straight-extra-installed-packages-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map
+                (kbd "C-j") #'straight-extra-installed-package-preview-command)
+    (define-key map
+                (kbd "C-c C-o") #'straight-extra-jump-to-config-other-window)
+    map))
+
+
+(defvar straight-extra-preview-action nil)
+(defun straight-extra-installed-package-preview-command ()
+  "Invoke `straight-extra-preview-action' or preview an installed package."
+  (interactive)
+  (when-let ((package
+              (straight-extra-minibuffer-item)))
+    (with-minibuffer-selected-window
+      (funcall
+       (or straight-extra-preview-action
+           #'straight-extra-jump-to-installed-package)
+       package))))
+
+(defvar straight-extra-installed-packages-history nil)
 (defun straight-extra-read-installed-package (&optional preview-action predicate
                                                         initial-input)
   "Read package from `straight--recipe-cache' with INITIAL-INPUT and PREDICATE.
@@ -3169,25 +3210,15 @@ minibuffer candidate. It will be called in window called before minibuffer."
     (setq initial-input (symbol-name initial-input)))
   (setq straight-extra-found-use-packages
         (straight-extra-find-all-use-package-calls))
+  (setq straight-extra-preview-action preview-action)
   (minibuffer-with-setup-hook
       (lambda ()
         (when (minibufferp)
-          (let ((map (make-sparse-keymap)))
-            (define-key map
-                        (kbd "C-j")
-                        (if preview-action
-                            (lambda ()
-                              (interactive)
-                              (when-let ((package
-                                          (straight-extra-minibuffer-item)))
-                                (with-minibuffer-selected-window
-                                  (funcall
-                                   (or preview-action
-                                       'straight-extra-jump-to-installed-package)
-                                   package))))))
-            (use-local-map (make-composed-keymap map (current-local-map))))))
+          (use-local-map (make-composed-keymap
+                          straight-extra-installed-packages-map
+                          (current-local-map)))))
     (completing-read
-     "Package "
+     "Package: "
      (straight-extra--package-completion
       (copy-hash-table
        straight--recipe-cache)
@@ -3196,7 +3227,8 @@ minibuffer candidate. It will be called in window called before minibuffer."
               straight-extra-found-use-packages))
      predicate
      t
-     initial-input)))
+     initial-input
+     'straight-extra-installed-packages-history)))
 
 ;;;###autoload
 (defun straight-extra-jump-to-package-readme (package)
@@ -3251,7 +3283,7 @@ If it returns nil, the package is not considered a selection candidate."
 
 
 
-;;;###autoload (autoload 'straight-extra-configure-package-menu "straight-extra.el" nil t)
+;;;###autoload (autoload 'straight-extra-configure-package-menu "straight-extra" nil t)
 (transient-define-prefix straight-extra-configure-package-menu ()
   "Configure package at point."
   [:description
@@ -3268,11 +3300,11 @@ If it returns nil, the package is not considered a selection candidate."
      straight-extra-transient-menu)]]
   (interactive)
   (if (straight-extra-get-current-package-name)
-      (transient-setup 'straight-extra-configure-package-menu)
+      (transient-setup #'straight-extra-configure-package-menu)
     (when (call-interactively #'straight-extra-jump-to-package-config)
-      (transient-setup 'straight-extra-configure-package-menu))))
+      (transient-setup #'straight-extra-configure-package-menu))))
 
-;;;###autoload (autoload 'straight-extra-straight-only-menu "straight-extra.el" nil t)
+;;;###autoload (autoload 'straight-extra-straight-only-menu "straight-extra" nil t)
 (transient-define-prefix straight-extra-straight-only-menu ()
   "Command dispatcher for straight."
   [["Check"
@@ -3303,7 +3335,7 @@ If it returns nil, the package is not considered a selection candidate."
    ["Use"
     ("t" "try package" straight-use-package)]])
 
-;;;###autoload (autoload 'straight-extra-transient-menu "straight-extra.el" nil t)
+;;;###autoload (autoload 'straight-extra-transient-menu "straight-extra" nil t)
 (transient-define-prefix straight-extra-transient-menu ()
   "Command dispatcher for straight."
   [["Explore"
