@@ -200,7 +200,7 @@
 
 (defun straight-extra-annotate-value (str max-len)
   "Trim STR if the length exceeds MAX-LEN else return STR."
-  (replace-regexp-in-string "[\n\r\n\f]+"
+  (replace-regexp-in-string "[\n\r\f]+"
                             "\s"
                             (if (and (> (length str) max-len))
                                 (concat (substring-no-properties str 0
@@ -1921,6 +1921,7 @@ PACKAGE should be either string or symbol."
       (?m
        (when (fboundp 'gh-repo-read-user-repo)
          (let ((lib (straight-extra-s-strip-props (gh-repo-read-user-repo
+                                                   "Repo: "
                                                    'identity)))
                (name)
                (user)
@@ -1951,106 +1952,110 @@ PACKAGE should be either string or symbol."
 ;;;###autoload
 (defun straight-extra-install-package (package &optional outfile insert-pos)
   "Install PACKAGE and write it to OUTFILE at INSERT-POS."
-  (interactive (list (straight-extra-read-package)))
-  (let ((symb (intern package)))
+  (interactive (list (or (and (derived-mode-p 'straight-extra-table-report-mode)
+                              (tabulated-list-get-id))
+                         (straight-extra-read-package))))
+  (let ((symb (intern package))
+        (installed (straight-extra-package-installed-p package)))
     (condition-case nil
         (straight-use-package symb)
       (error
        (when (fboundp 'straight-pull-recipe-repositories)
          (straight-pull-recipe-repositories)
          (straight-use-package symb))))
-    (require symb nil t))
-  (when-let ((dest
-              (cond ((eq outfile 'no-write)
-                     nil)
-                    ((and outfile)
-                     outfile)
-                    ((functionp
-                      straight-extra-save-use-package-file)
-                     (funcall
-                      straight-extra-save-use-package-file
-                      package))
-                    ((and (not straight-extra-save-use-package-file)
-                          (not straight-extra-last-written-file))
-                     (setq straight-extra-last-written-file
-                           (read-file-name
-                            (format
-                             "Save %s to: "
-                             package)
-                            user-emacs-directory)))
-                    ((and straight-extra-last-written-file
-                          (or (not straight-extra-save-use-package-file)
-                              (and
-                               (stringp straight-extra-save-use-package-file)
-                               (file-directory-p
-                                straight-extra-save-use-package-file)
-                               (file-in-directory-p
-                                straight-extra-last-written-file
-                                straight-extra-save-use-package-file))))
-                     (read-file-name (format
-                                      "Save %s to: "
-                                      package)
-                                     (if (file-directory-p
-                                          straight-extra-last-written-file)
-                                         straight-extra-last-written-file
-                                       (file-name-directory
-                                        straight-extra-last-written-file))
-                                     nil
-                                     nil
-                                     (file-name-nondirectory
-                                      straight-extra-last-written-file)))
-                    ((file-directory-p
-                      straight-extra-save-use-package-file)
-                     (read-file-name (format "Save %s to: "
-                                             package)
-                                     straight-extra-save-use-package-file))
-                    ((file-name-absolute-p
-                      straight-extra-save-use-package-file)
-                     straight-extra-save-use-package-file))))
-    (while (file-directory-p dest)
-      (setq dest (read-file-name "File"
-                                 dest)))
-    (setq straight-extra-last-written-file dest)
-    (unless (file-exists-p dest)
-      (unless (file-exists-p (file-name-directory dest))
-        (make-directory (file-name-directory
-                         dest)
-                        'parents))
-      (let ((non-dir (file-name-nondirectory dest)))
-        (write-region
-         (string-join (list (format
-                             ";;; %s --- Configure %s lexical-binding: t; -*-"
-                             non-dir package)
-                            ";;; Commentary:"
-                            ";;; Code:"
-                            "(eval-when-compile (require 'use-package))"
-                            (format "(provide '%s)\n;;; %s ends here"
-                                    (file-name-base
-                                     dest)
-                                    non-dir))
-                      "\n\n")
-         nil
-         dest)))
-    (with-current-buffer (if (equal buffer-file-name dest)
-                             (current-buffer)
-                           (find-file-noselect dest))
-      (if insert-pos
-          (goto-char insert-pos)
-        (goto-char (point-max))
-        (straight-extra-backward-list))
-      (insert "(use-package " package ")"
-              (if (looking-at "\n")
-                  ""
-                "\n"))
-      (skip-chars-backward "\n")
-      (forward-char -1)
-      (require 'prettier-elisp nil t)
-      (when (fboundp 'prettier-elisp)
-        (prettier-elisp))
-      (unless (get-buffer-window (current-buffer))
-        (pop-to-buffer-same-window (current-buffer))))
-    (with-selected-window (selected-window)
-      (straight-extra-find-readme-other-window-for-current package))))
+    (require symb nil t)
+    (unless installed
+      (when-let ((dest
+                  (cond ((eq outfile 'no-write)
+                         nil)
+                        ((and outfile)
+                         outfile)
+                        ((functionp
+                          straight-extra-save-use-package-file)
+                         (funcall
+                          straight-extra-save-use-package-file
+                          package))
+                        ((and (not straight-extra-save-use-package-file)
+                              (not straight-extra-last-written-file))
+                         (setq straight-extra-last-written-file
+                               (read-file-name
+                                (format
+                                 "Save %s to: "
+                                 package)
+                                user-emacs-directory)))
+                        ((and straight-extra-last-written-file
+                              (or (not straight-extra-save-use-package-file)
+                                  (and
+                                   (stringp straight-extra-save-use-package-file)
+                                   (file-directory-p
+                                    straight-extra-save-use-package-file)
+                                   (file-in-directory-p
+                                    straight-extra-last-written-file
+                                    straight-extra-save-use-package-file))))
+                         (read-file-name (format
+                                          "Save %s to: "
+                                          package)
+                                         (if (file-directory-p
+                                              straight-extra-last-written-file)
+                                             straight-extra-last-written-file
+                                           (file-name-directory
+                                            straight-extra-last-written-file))
+                                         nil
+                                         nil
+                                         (file-name-nondirectory
+                                          straight-extra-last-written-file)))
+                        ((file-directory-p
+                          straight-extra-save-use-package-file)
+                         (read-file-name (format "Save %s to: "
+                                                 package)
+                                         straight-extra-save-use-package-file))
+                        ((file-name-absolute-p
+                          straight-extra-save-use-package-file)
+                         straight-extra-save-use-package-file))))
+        (while (file-directory-p dest)
+          (setq dest (read-file-name "File"
+                                     dest)))
+        (setq straight-extra-last-written-file dest)
+        (unless (file-exists-p dest)
+          (unless (file-exists-p (file-name-directory dest))
+            (make-directory (file-name-directory
+                             dest)
+                            'parents))
+          (let ((non-dir (file-name-nondirectory dest)))
+            (write-region
+             (string-join (list (format
+                                 ";;; %s --- Configure %s lexical-binding: t; -*-"
+                                 non-dir package)
+                                ";;; Commentary:"
+                                ";;; Code:"
+                                "(eval-when-compile (require 'use-package))"
+                                (format "(provide '%s)\n;;; %s ends here"
+                                        (file-name-base
+                                         dest)
+                                        non-dir))
+                          "\n\n")
+             nil
+             dest)))
+        (with-current-buffer (if (equal buffer-file-name dest)
+                                 (current-buffer)
+                               (find-file-noselect dest))
+          (if insert-pos
+              (goto-char insert-pos)
+            (goto-char (point-max))
+            (straight-extra-backward-list))
+          (insert "(use-package " package ")"
+                  (if (looking-at "\n")
+                      ""
+                    "\n"))
+          (skip-chars-backward "\n")
+          (forward-char -1)
+          (require 'prettier-elisp nil t)
+          (when (fboundp 'prettier-elisp)
+            (prettier-elisp))
+          (unless (get-buffer-window (current-buffer))
+            (pop-to-buffer-same-window (current-buffer))))
+        (with-selected-window (selected-window)
+          (straight-extra-find-readme-other-window-for-current package))))))
 
 (defun straight-extra-serialize (data filename)
   "Serialize DATA to FILENAME.
@@ -2394,7 +2399,13 @@ represent a JSON false value.  It defaults to `:false'."
                            (string-to-number (or b "0")))))))
             col)
           columns)))
-
+(defvar straight-extra-table-report-mode-map
+  (let ((map (make-sparse-keymap)))
+    (set-keymap-parent map
+                       tabulated-list-mode-map)
+    (define-key map (kbd "RET")
+                #'straight-extra-install-package)
+    map))
 (define-derived-mode straight-extra-table-report-mode tabulated-list-mode
   "straight-extra-table report."
   "Show report gathered about unused definitions."
@@ -2404,7 +2415,8 @@ represent a JSON false value.  It defaults to `:false'."
           ("Description" 50 nil)
           ("Year" 5 number)
           ("Loads" 10 number)
-          ("Keywords" 10)]))
+          ("Keywords" 10)
+          ]))
   (tabulated-list-init-header))
 
 
@@ -2428,19 +2440,27 @@ represent a JSON false value.  It defaults to `:false'."
                                              ".")
                                             0 4))
               (keywords (string-join
-                         (cdr (assq 'keywords props)) " ")))
+                         (cdr (assq 'keywords props)) " "))
+              (installed (straight-extra-package-installed-p name)))
           (push (list (symbol-name id)
                       (apply #'vector
                              (mapcar
                               (lambda (it)
                                 (or it ""))
                               (list
-                               (cons name
-                                     (list
-                                      'follow-link t
-                                      'button-data url
-                                      'action
-                                      #'straight-extra-browse-url-no-select))
+                               (cons (substring-no-properties name)
+                                     (if installed
+                                         (list
+                                          'follow-link t
+                                          'face 'font-lock-type-face
+                                          'button-data name
+                                          'action
+                                          #'straight-extra-preview-installed-location)
+                                       (list
+                                        'follow-link t
+                                        'button-data url
+                                        'action
+                                        #'straight-extra-browse-url-no-select)))
                                desc
                                ver
                                (if downloads
@@ -2450,7 +2470,40 @@ represent a JSON false value.  It defaults to `:false'."
                                keywords))))
                 result))))
     result))
-
+;; ;;;###autoload
+;; (defun straight-extra-vtable (&optional force)
+;;   "Show ITEMS in Tabulated List buffer.
+;; With prefix argument FORCE to refetch archives."
+;;   (interactive "P")
+;;   (require 'vtable)
+;;   (with-current-buffer (get-buffer-create "*Melpa Packages Vable*")
+;;     (straight-extra-ensure-melpa force)
+;;     (erase-buffer)
+;;     (let ((data straight-extra-melpa-packages-archive-alist))
+;;       (make-vtable
+;;        :columns
+;;        '((:name "Id"
+;;                 :width 20)
+;;          (:name "Desc"
+;;                 :width 60)
+;;          (:name "Downloads"
+;;                 :width 10)
+;;          (:name "Ver"
+;;                 :primary ascend))
+;;        :divider " "
+;;        :objects data
+;;        :getter (lambda (object column vtable)
+;;                  (pcase-let* ((`(,key . ,data) object)
+;;                               (col-name (vtable-column vtable column))
+;;                               (field (intern (downcase col-name))))
+;;                    (pcase col-name
+;;                      ("Id" key)
+;;                      (_
+;;                       (let ((value (alist-get field data)))
+;;                         (if (listp value)
+;;                             (car value)
+;;                           value))))))))
+;;     (pop-to-buffer (current-buffer))))
 ;;;###autoload
 (defun straight-extra-list-packages (&optional force)
   "Show ITEMS in Tabulated List buffer.
@@ -2715,8 +2768,10 @@ If windows doesn't exists, split current window."
                  input))
               (minw (minibuffer-selected-window)))
     (with-minibuffer-selected-window
-      (if (fboundp 'magit-status)
-          (magit-status file)
+      (if (and (fboundp 'magit-status)
+               (fboundp 'magit-section-show-level-4-all))
+          (progn (magit-status file)
+                 (magit-section-show-level-4-all))
         (vc-diff)))))
 
 (defun straight-extra-completing-read-file (prompt files &optional predicate
@@ -2916,6 +2971,13 @@ repositories."
           pos)))))
 
 
+(defun straight-extra-package-installed-p (package)
+  (ignore-errors
+    (let* ((recipe
+            (ignore-errors
+              (gethash package
+                       straight--recipe-cache))))
+      (straight--installed-p recipe))))
 
 (defun straight-extra--package-annotation (recipes)
   "Return an annotation function for RECIPES keys.
@@ -3101,6 +3163,9 @@ Return cons with a filename and point if found, or nil."
 (defun straight-extra-jump-to-installed-package (package &optional other-wind)
   "Jump  to the first `use-package' call with PACKAGE using `find' and `grep'.
 If OTHER-WIND is non nil, find file in other window."
+  (unless straight-extra-found-use-packages
+    (setq straight-extra-found-use-packages
+          (straight-extra-find-all-use-package-calls)))
   (when-let* ((found (assq (if (stringp package)
                                (intern package)
                              package)
@@ -3155,7 +3220,10 @@ HASH must be a hash table mapping package name strings to recipes."
 (defun straight-extra-preview-installed-location ()
   "Find `use-package' call with current minibuffer candidate."
   (interactive)
-  (when-let ((package (straight-extra-minibuffer-item)))
+  (when-let ((package (if (derived-mode-p
+                           'straight-extra-table-report-mode)
+                          (tabulated-list-get-id)
+                        (straight-extra-minibuffer-item))))
     (with-minibuffer-selected-window
       (straight-extra-jump-to-installed-package
        package))))
