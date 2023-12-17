@@ -6,7 +6,7 @@
 ;; URL: https://github.com/KarimAziev/straight-extra
 ;; Version: 0.1.0
 ;; Keywords: convenience abbrev
-;; Package-Requires: ((emacs "28.1") (project "0.9.8"))
+;; Package-Requires: ((emacs "28.1") (project "0.10.0"))
 ;; SPDX-License-Identifier: GPL-3.0-or-later
 
 ;; This file is NOT part of GNU Emacs.
@@ -36,46 +36,101 @@
 (declare-function find-library-name "find-func")
 
 (defcustom straight-extra-save-use-package-file user-emacs-directory
-  "Where to save packages."
+  "Path or function to determine where to save packages.
+
+Specifies the location where `use-package' forms should be saved when
+using the straight.el package manager's extra features. The default
+location is the user's Emacs directory.
+
+Acceptable values are either a string representing a file path, a
+directory path, or a function. If a file path is provided, all
+`use-package' forms will be saved to that file. If a directory path is
+given, each `use-package' form will be saved to a separate file within
+that directory, named after the package. If a function is specified, it
+will be called with the package name as an argument, and it should
+return a file path where the `use-package' form will be saved.
+
+To change the value, use the customization interface or set the variable
+in your Emacs configuration file with `setq'."
   :group 'straight-extra
   :type '(radio :tag "Where to save packages."
-                (file :tag "File")
-                (directory :tag "Directory")
-                (function :tag "Custom function")))
-
-
-
+          (file :tag "File")
+          (directory :tag "Directory")
+          (function :tag "Custom function")))
 
 (defcustom straight-extra-melpa-cache-filename (expand-file-name
                                                 "var/.staight-extra-archives.cache"
                                                 user-emacs-directory)
-  "Where to save melpa archives."
-  :type 'file
-  :group 'straight-extra)
+  "Filepath for caching MELPA package metadata.
 
-(defcustom straight-extra-melpa-cache-alist (expand-file-name
-                                             "var/.straight-extra-melpa.cache"
-                                             user-emacs-directory)
-  "Where to save melpa archives."
+Specifies the filename for caching extra MELPA package information.
+
+The default value is a file named `.straight-extra-archives.cache' located in
+the `var' subdirectory of the user's Emacs directory.
+
+To change the cache location, set this to a string representing the desired
+absolute file path."
   :type 'file
   :group 'straight-extra)
 
 (defcustom straight-extra-use-package-symbol-names '("use-package"
                                                      "use-package!"
                                                      "straight-use-package")
-  "Symbol names to search installed packages."
+  "List of symbol names for extra `use-package' declarations.
+
+A list of symbol names that represent `use-package' macros or functions.
+
+Each element in the list should be a string that corresponds to the name of a
+`use-package' macro or function. These names are used to identify `use-package'
+declarations when performing operations such as searching for package
+declarations or copying their configurations.
+
+The default value includes common variations of `use-package' declarations.
+Users can add or remove entries to customize the behavior of functions that rely
+on this list.
+
+To modify this list, use `M-x `customize-option'` and search for the
+corresponding customization option, then add or remove strings as needed. Ensure
+that each entry is an exact match for the `use-package' macro or function name
+used in the Emacs configuration."
   :group 'straight-extra
   :type '(repeat string))
+
+(defcustom straight-extra-use-xwidgets nil
+  "Whether to use XWidgets for browsing URLs.
+
+Determines whether to use Xwidgets for browsing URLs when available and running
+in a graphical display.
+
+When non-nil, and the `xwidget-internal' feature is available, URLs will be
+opened using the Xwidgets Webkit browser within Emacs. Otherwise, the default
+browser method is used.
+
+The default value is nil, meaning that Xwidgets Webkit browser is not used by
+default.
+
+To enable this feature, set the value to t. This can be done either through the
+customization interface or by adding the following line to the Emacs
+configuration:
+
+\\=(setq straight-extra-use-xwidgets t)
+
+Note that this feature requires Emacs to be compiled with Xwidgets support."
+  :group 'straight-extra
+  :type 'boolean)
 
 (defvar straight-recipe-repositories)
 (defvar straight-extra--readed-files)
 (defvar straight-extra--var-types (list
                                    (cons 'defvar 3)
                                    (cons 'defconst 3)
-                                   (cons 'defvar-keymap 3)))
+                                   (cons 'defvar-keymap 3))
+  "List of variable types with arity for extra functionality.")
 
 (defvar straight-extra--custom-types (list
-                                      (cons 'defcustom 3)))
+                                      (cons 'defcustom 3))
+  "List of custom types with their arity for straight.el extensions.")
+
 (defvar straight-extra--func-types
   (list
    (cons 'defun 3)
@@ -90,7 +145,8 @@
    (cons 'cl-defsubst 3)
    (cons 'cl-defmacro 3)
    (cons 'cl-defgeneric 3)
-   (cons 'cl-defmethod 3)))
+   (cons 'cl-defmethod 3))
+  "List of function definition forms and their arities.")
 
 (defvar straight-extra--modes-types
   (list
@@ -98,7 +154,8 @@
    (cons 'define-derived-mode 4)
    (cons 'define-generic-mode 8)
    (cons 'define-compilation-mode 3)
-   (cons 'easy-mmode-define-minor-mode 2)) )
+   (cons 'easy-mmode-define-minor-mode 2))
+  "List of mode definition types with associated numeric values.")
 
 (defvar straight-extra--def-type-poses
   (append
@@ -111,27 +168,23 @@
    straight-extra--var-types
    straight-extra--custom-types
    straight-extra--func-types
-   straight-extra--modes-types))
+   straight-extra--modes-types)
+  "Alist mapping definition macros to their position arguments.")
 
 (defvar straight-extra--interactive-types
   (list
    (cons 'defun 3)
    (cons 'defsubst 3)
    (cons 'cl-defun 3)
-   (cons 'cl-defsubst 3)))
-
-(defvar straight-extra--modes-types
-  (list
-   (cons 'define-minor-mode 2)
-   (cons 'define-derived-mode 4)
-   (cons 'define-generic-mode 8)
-   (cons 'define-compilation-mode 3)
-   (cons 'easy-mmode-define-minor-mode 2)) )
-
-
+   (cons 'cl-defsubst 3))
+  "List of interactive Lisp function types and their arity.")
 
 (defun straight-extra--find-lib-in-dir (sym dir)
-  "Lookup for library SYM in current directory DIR."
+  "Find and return the file path of library SYM in directory DIR.
+
+Argument SYM is a symbol representing the library to find.
+
+Argument DIR is a string specifying the directory to search for the library."
   (require 'find-func)
   (when-let ((file (ignore-errors
                      (file-truename (find-library-name (symbol-name sym))))))
@@ -139,24 +192,28 @@
       file)))
 
 (defun straight-extra--sexp-declare-p (sexp)
-  "Return non-nil if SEXP is declared form."
+  "Check if SEXP is a declaration and return its type and name.
+
+Argument SEXP is an s-expression to be checked for declaration forms."
   (pcase sexp
     (`(defvar ,name)
      (list 'defvar name))
     (`(declare-function ,name)
      (list 'declare-function name))
     (`(declare-function ,name
-                        ,_file)
+       ,_file)
      (list 'declare-function name))
     (`(declare-function ,name
-                        ,_file
-                        ,_args)
+       ,_file
+       ,_args)
      (list 'declare-function name))
     (`(declare-function ,name ,_file ,_args ,_fileonly)
      (list 'declare-function name))))
 
 (defun straight-extra--unquote (exp)
-  "Return EXP unquoted."
+  "Remove \\='function quote from EXP if present.
+
+Argument EXP is an expression to be unquoted."
   (declare (pure t)
            (side-effect-free t))
   (while (memq (car-safe exp) '(quote function))
@@ -164,7 +221,9 @@
   exp)
 
 (defun straight-extra--get-doc-from-sexp (sexp)
-  "Return documentation from SEXP."
+  "Extract documentation string from S-expression.
+
+Argument SEXP is a proper list representing an Emacs Lisp expression."
   (when (proper-list-p sexp)
     (let* ((type (car-safe sexp))
            (pos (and type
@@ -176,22 +235,29 @@
               ((guard (and pos
                            (eq type 'cl-defmethod)
                            (memq (nth 2 sexp) '(:around :after
-                                                        :before))))
+                                                :before))))
                (nth (1+ pos) sexp))
               ((guard (and pos))
                (nth pos sexp)))))
       doc-str)))
+
 (defun straight-extra-read-sexp (item &optional extra-props)
-  "Parse ITEM and return plist with EXTRA-PROPS."
+  "Parse ITEM into a sexp, optionally with EXTRA-PROPS.
+
+Argument ITEM is the expression to be read and parsed.
+
+Optional argument EXTRA-PROPS is a plist of additional properties that may
+modify the parsing behavior."
   (let ((result (straight-extra--parse-sexp item extra-props)))
     (if (and (car-safe result)
              (symbolp (car result)))
         (list result)
       result)))
 
-
 (defun straight-extra-plist-keys (plist)
-  "Return the keys in PLIST."
+  "Extract keys from property list PLIST.
+
+Argument PLIST is a property list from which keys are extracted."
   (let (keys)
     (while plist
       (push (car plist) keys)
@@ -199,7 +265,11 @@
     keys))
 
 (defun straight-extra-annotate-value (str max-len)
-  "Trim STR if the length exceeds MAX-LEN else return STR."
+  "Shorten and sanitize STR, ensuring it's under MAX-LEN.
+
+Argument STR is the string to be annotated.
+
+Argument MAX-LEN is the maximum length of the annotated string."
   (replace-regexp-in-string "[\n\r\f]+"
                             "\s"
                             (if (and (> (length str) max-len))
@@ -210,15 +280,37 @@
                                         "...")
                               str)))
 
-
 (defun straight-extra-completing-read-annotated (prompt collection &optional
                                                         annot-fn keymap
                                                         predicate require-match
                                                         initial-input hist def
                                                         inherit-input-method)
-  "Read a string in the minibuffer, with completion, ANNOT-FN and KEYMAP.
-PROMPT, COLLECTION, PREDICATE, REQUIRE-MATCH, INITIAL-INPUT, HIST, DEF and
-INHERIT-INPUT-METHOD have the same meaning as for `completing-read'."
+  "Choose with annotations from a list using PROMPT.
+
+Argument PROMPT is a string to display as the prompt in the minibuffer.
+
+Argument COLLECTION is a list of strings or a function to generate them, which
+are the possible completions.
+
+Optional argument ANNOT-FN is a function to annotate each completion candidate.
+
+Optional argument KEYMAP is a keymap to use while reading from the minibuffer.
+
+Optional argument PREDICATE is a function to filter the completion candidates.
+
+Optional argument REQUIRE-MATCH determines whether input must match one of the
+completions.
+
+Optional argument INITIAL-INPUT is a string to prefill the minibuffer with.
+
+Optional argument HIST is a symbol representing a history list to use for
+completion.
+
+Optional argument DEF is the default value to return if the user enters an empty
+string.
+
+Optional argument INHERIT-INPUT-METHOD, if non-nil, means the minibuffer
+inherits the current input method."
   (let* ((alist (copy-tree collection))
          (annotf
           (or annot-fn
@@ -259,8 +351,9 @@ INHERIT-INPUT-METHOD have the same meaning as for `completing-read'."
                        predicate require-match
                        initial-input hist def
                        inherit-input-method))))
+
 (defun straight-extra-read-setq-variables ()
-  "Parse ITEM and return plist with EXTRA-PROPS."
+  "Prompt for a variable from `setq' at point and annotate."
   (let ((result (sexp-at-point)))
     (pcase result
       (`(setq . ,plist)
@@ -280,7 +373,12 @@ INHERIT-INPUT-METHOD have the same meaning as for `completing-read'."
                                                        90)))))))))
 
 (defun straight-extra--parse-sexp (item &optional extra-props)
-  "Parse ITEM and return plist with EXTRA-PROPS."
+  "Parse and transform ITEM into a plist with EXTRA-PROPS.
+
+Argument ITEM is the sexp to parse.
+
+Optional argument EXTRA-PROPS is a plist of additional properties to include in
+the result."
   (when (proper-list-p item)
     (let ((type (car-safe item)))
       (when (and type
@@ -299,10 +397,10 @@ INHERIT-INPUT-METHOD have the same meaning as for `completing-read'."
           ('define-key
            (pcase item
              (`(define-key ,map ,key
-                           ,(and cmd
-                                 (guard
-                                  (symbolp (straight-extra--unquote
-                                            cmd)))))
+                ,(and cmd
+                  (guard
+                   (symbolp (straight-extra--unquote
+                             cmd)))))
               (list
                (cons (straight-extra--unquote cmd)
                      (append
@@ -323,20 +421,20 @@ INHERIT-INPUT-METHOD have the same meaning as for `completing-read'."
            (when-let ((sym
                        (pcase item
                          (`(require ,(and name
-                                          (guard (listp name))
-                                          (guard (eq (car-safe name) 'quote))))
+                                      (guard (listp name))
+                                      (guard (eq (car-safe name) 'quote))))
                           (straight-extra--unquote name))
                          (`(require ,(and name
-                                          (guard (listp name))
-                                          (guard (eq (car-safe name) 'quote)))
-                                    ,_)
+                                      (guard (listp name))
+                                      (guard (eq (car-safe name) 'quote)))
+                            ,_)
                           (straight-extra--unquote name))
                          (`(require ,(and name
-                                          (guard (listp name))
-                                          (guard (eq (car-safe name) 'quote)))
-                                    ,_
-                                    ,(and optional
-                                          (guard (not (eq optional nil)))))
+                                      (guard (listp name))
+                                      (guard (eq (car-safe name) 'quote)))
+                            ,_
+                            ,(and optional
+                              (guard (not (eq optional nil)))))
                           (straight-extra--unquote name)))))
              (if-let ((file (straight-extra--find-lib-in-dir
                              sym
@@ -464,7 +562,9 @@ INHERIT-INPUT-METHOD have the same meaning as for `completing-read'."
                         props)))))))))))
 
 (defun straight-extra-parse-items-in-file (file)
-  "Find items in FILE."
+  "Parse and return items from FILE as sexp lists.
+
+Argument FILE is a string specifying the path to the file to be parsed."
   (with-temp-buffer
     (erase-buffer)
     (insert-file-contents file)
@@ -500,7 +600,9 @@ INHERIT-INPUT-METHOD have the same meaning as for `completing-read'."
       sexps)))
 
 (defun straight-extra--read-file (file)
-  "Find items in FILE."
+  "Read and parse items from FILE if not already read.
+
+Argument FILE is the name of the file to be read."
   (if (not (boundp 'straight-extra--readed-files))
       (let ((straight-extra--readed-files))
         (unless (member file straight-extra--readed-files)
@@ -511,9 +613,16 @@ INHERIT-INPUT-METHOD have the same meaning as for `completing-read'."
       (straight-extra-parse-items-in-file file))))
 
 (defun straight-extra-group-with (fn items &optional transform-fn)
-  "Group ITEMS by calling FN with every item.
-FN should return key.
-TRANSFORM-FN should return transformed item."
+  "Group ITEMS using FN and optionally transform with TRANSFORM-FN.
+
+Argument FN is a function that takes an item from ITEMS and returns a key for
+grouping.
+
+Argument ITEMS is a list of elements to be grouped according to the keys
+generated by FN.
+
+Optional argument TRANSFORM-FN is a function applied to each item before
+grouping; if nil, ITEMS are grouped as is."
   (seq-reduce (lambda (acc it)
                 (let* ((key (funcall fn it))
                        (val (if transform-fn (funcall transform-fn it) it))
@@ -529,7 +638,10 @@ TRANSFORM-FN should return transformed item."
               (seq-copy items) '()))
 
 (defun straight-extra-plist-remove-nils (plist)
-  "Return the keys in PLIST."
+  "Remove nil values from PLIST, returning a clean property list.
+
+Argument PLIST is a property list where each even element is a key and each odd
+element is a value."
   (let* ((result (list 'head))
          (last result))
     (while plist
@@ -542,7 +654,9 @@ TRANSFORM-FN should return transformed item."
     (cdr result)))
 
 (defun straight-extra-get-library-items (lib)
-  "Find items in LIB."
+  "Group library items by type after loading LIB.
+
+Argument LIB is a symbol or string representing the library to get items from."
   (let* ((sym (if (stringp lib)
                   (intern lib)
                 lib))
@@ -594,10 +708,15 @@ TRANSFORM-FN should return transformed item."
 (require 'straight)
 
 (defvar straight-extra-melpa-packages-archive-hash
-  (make-hash-table :test 'equal))
+  (make-hash-table :test 'equal)
+  "Hash table mapping package names to their archive contents.")
 
-(defvar straight-extra-melpa-packages-archive-alist nil)
-(defvar straight-extra-melpa-packages-archive-alist-downloads nil)
+(defvar straight-extra-melpa-packages-archive-alist nil
+  "Alist mapping package names to their MELPA archive URLs.")
+
+(defvar straight-extra-melpa-packages-archive-alist-downloads nil
+  "Alist mapping package names to download counts.")
+
 (defvar straight-extra--docstring-positions
   (mapcar (lambda (it)
             (setcar it (intern (car it)))
@@ -630,10 +749,14 @@ TRANSFORM-FN should return transformed item."
             ("cl-defstruct" . 3)
             ("easy-mmode-define-minor-mode" . 2)
             ("transient-define-infix" . 3)
-            ("defface" . 3))))
+            ("defface" . 3)))
+  "Positions for docstrings in various definitions.")
 
 (defun straight-extra-symbol-sexp-keymapp (sexp)
-  "Return t if SEXP look like keymap variable."
+  "Check if SEXP contain a keymap creation form.
+
+Argument SEXP is an expression to be checked if it contains a keymap creation
+form."
   (when-let* ((value (nth 2 sexp))
               (vals (and (listp value)
                          (symbolp (car value))
@@ -653,20 +776,24 @@ TRANSFORM-FN should return transformed item."
                 vals))))
 
 (defun straight-extra-sexp-at-point ()
-  "Return the elisp sexp at point, or nil if none is found."
+  "Extract the S-expression at the current point."
   (with-syntax-table emacs-lisp-mode-syntax-table
     (sexp-at-point)))
 
 (defun straight-extra-symbol-keymapp (sym)
-  "Return t if value of symbol SYM is a keymap."
+  "Check if SYM's value is a keymap.
+
+Argument SYM is a symbol whose value is checked to determine if it is a keymap."
   (when-let ((val
               (when (boundp sym)
                 (symbol-value sym))))
     (keymapp val)))
 
 (defun straight-extra-function-p (symb)
-  "Return t is SYMB can have arguments.
-SYMB can be either symbol, either string."
+  "Check if SYMB is a special function definition keyword.
+
+Argument SYMB is a symbol or a string representing the name of a function or
+macro."
   (member (if (symbolp symb)
               (symbol-name symb)
             symb)
@@ -681,7 +808,13 @@ SYMB can be either symbol, either string."
             "define-advice")))
 
 (defun straight-extra-read-library-name--find-files (dirs suffixes)
-  "Return a list of all files in DIRS that match SUFFIXES."
+  "Search directories DIRS for files with SUFFIXES.
+
+Argument DIRS is a list of directory paths where the function will search for
+files.
+
+Argument SUFFIXES is a list of file suffixes to match against when searching for
+files."
   (let ((files nil)
         (regexp (concat (regexp-opt suffixes) "\\'")))
     (dolist (dir dirs)
@@ -691,7 +824,7 @@ SYMB can be either symbol, either string."
     files))
 
 (defun straight-extra-elisp-builtins-features ()
-  "Return alist of builtin library names and parent directories."
+  "List available Elisp library names excluding user directory."
   (require 'find-func)
   (let* ((dirs (or find-library-source-path
                    (seq-remove
@@ -703,7 +836,10 @@ SYMB can be either symbol, either string."
     (straight-extra-read-library-name--find-files dirs suffixes)))
 
 (defun straight-extra-key-description (key)
-  "Return key description for KEY without errors."
+  "Convert KEY to a human-readable string description.
+
+Argument KEY is a string representing a keyboard input or a single character to
+be converted to its textual `key-binding' representation."
   (or
    (ignore-errors (key-description
                    (kbd key)))
@@ -714,11 +850,10 @@ SYMB can be either symbol, either string."
      (key-description (vector key)))))
 
 (defun straight-extra--keymap-keys (keymap)
-  "Return all the keys and commands in KEYMAP.
-Flattens nested keymaps and follows remapped commands.
+  "Extract keys from a given keymap.
 
-Returns a list of pairs (KEYCODES COMMAND), where KEYCODES is a
-vector suitable for `key-description', and COMMAND is a smbol."
+Argument KEYMAP is a keymap, symbol, function, string, or vector to extract keys
+from."
   (when keymap
     (cond ((and
             (symbolp keymap)
@@ -755,18 +890,18 @@ vector suitable for `key-description', and COMMAND is a smbol."
                                     (keycodes
                                      (car-safe
                                       (prog1 source-1--
-                                        (setq source-1--
-                                              (cdr source-1--)))))
+                                       (setq source-1--
+                                        (cdr source-1--)))))
                                     (command
                                      (car source-1--)))
-                               (setq result
-                                     (cons
-                                      (list
-                                       (vconcat
-                                        (vector keycode)
-                                        keycodes)
-                                       command)
-                                      result))))
+                              (setq result
+                               (cons
+                                (list
+                                 (vconcat
+                                  (vector keycode)
+                                  keycodes)
+                                 command)
+                                result))))
                          (straight-extra--keymap-keys value))))
                      ((char-table-p item)
                       (map-char-table
@@ -778,18 +913,18 @@ vector suitable for `key-description', and COMMAND is a smbol."
                                      (keycodes
                                       (car-safe
                                        (prog1 source-14--
-                                         (setq source-14--
-                                               (cdr source-14--)))))
+                                        (setq source-14--
+                                         (cdr source-14--)))))
                                      (command
                                       (car source-14--)))
-                                (setq result
-                                      (cons
-                                       (list
-                                        (vconcat
-                                         (vector keycode)
-                                         keycodes)
-                                        command)
-                                       result))))
+                               (setq result
+                                (cons
+                                 (list
+                                  (vconcat
+                                   (vector keycode)
+                                   keycodes)
+                                  command)
+                                 result))))
                           (straight-extra--keymap-keys value)))
                        item))))
              (setq result
@@ -847,11 +982,17 @@ vector suitable for `key-description', and COMMAND is a smbol."
              (nreverse result))))))
 
 (defun straight-extra-keymap-keys-to-alist (keymap &optional filter)
-  "Map KEYMAP to alist with FILTER function.
-FILTER function will be called with two arguments - key description and value."
+  "Convert KEYMAP to alist, filtering with optional FILTER.
+
+Argument KEYMAP is the keymap from which to extract keys and their associated
+commands.
+
+Optional argument FILTER is a predicate function that takes two arguments, a key
+description and a command, and returns non-nil if the key-command pair should be
+included in the output."
   (let ((exclude-cmds '(digit-argument negative-argument
-                                       self-insert-command
-                                       undefined)))
+                        self-insert-command
+                        undefined)))
     (delq nil
           (mapcar (lambda (it)
                     (when (listp it)
@@ -874,7 +1015,12 @@ FILTER function will be called with two arguments - key description and value."
                                                          keymap)))))))
 
 (defun straight-extra-format-keymap-to-alist (keymap &optional symb-prefix)
-  "Convert KEYMAP to alist and filter by SYMB-PREFIX."
+  "Convert KEYMAP to alist, optionally filtering by prefix.
+
+Argument KEYMAP is the keymap to be formatted into an alist.
+
+Optional argument SYMB-PREFIX is a symbol or string used as a prefix to filter
+KEYMAP entries."
   (when (keymapp keymap)
     (if-let ((name
               (when symb-prefix
@@ -893,19 +1039,21 @@ FILTER function will be called with two arguments - key description and value."
       (straight-extra-keymap-keys-to-alist keymap))))
 
 (defmacro straight-extra-autodoc-with-temp-lisp-buffer (&rest body)
-  "Execute BODY in temp buffer with Emacs Lisp mode without hooks."
+  "Create a temporary buffer for evaluating BODY in Emacs Lisp mode.
+
+Remaining arguments BODY are Lisp expressions to be evaluated in the temporary
+buffer with Emacs Lisp mode enabled."
   (declare (indent 2)
            (debug t))
   `(with-temp-buffer
      (erase-buffer)
      (let (emacs-lisp-mode-hook)
-       (emacs-lisp-mode))
+      (emacs-lisp-mode))
      (progn
        ,@body)))
 
 (defun straight-extra--parse-list-at-point ()
-  "Parse list at point and return alist of form (symbol-name args doc deftype).
-E.g. (\"straight-extra--parse-list-at-point\" (arg) \"Doc string\" defun)"
+  "Parse list at cursor and return its components."
   (when-let* ((sexp
                (unless (nth 4 (syntax-ppss (point)))
                  (list-at-point)))
@@ -940,7 +1088,7 @@ E.g. (\"straight-extra--parse-list-at-point\" (arg) \"Doc string\" defun)"
                   (t type))))))
 
 (defun straight-extra-scan-get-buffer-maps ()
-  "Return keymaps in current buffer."
+  "Extract keymaps from buffer data and return them as pairs."
   (when-let ((maps (plist-get (straight-extra-scan-buffer) :keymap)))
     (delq nil (mapcar (lambda (it)
                         (when-let* ((sym (intern (car it)))
@@ -950,14 +1098,7 @@ E.g. (\"straight-extra--parse-list-at-point\" (arg) \"Doc string\" defun)"
                       maps))))
 
 (defun straight-extra-scan-buffer ()
-  "Return plist of top level Lisp definitions.
-
-Each key is definition type, converted to keyword (:defmacro, :defun etc),
-except interactive functions, which holds under keyword :interactive.
-
-The value of plist is a list of sublists of form (symbol-name args doc deftype).
-
-See function `straight-extra--parse-list-at-point'."
+  "Scan buffer for lists and return property list with keywords and groups."
   (save-excursion
     (let ((pl '()))
       (goto-char (point-max))
@@ -971,7 +1112,7 @@ See function `straight-extra--parse-list-at-point'."
       pl)))
 
 (defun straight-extra-read-builtin-lib ()
-  "Read bultin library."
+  "Prompt for a built-in library name with annotations."
   (let* ((alist (reverse (straight-extra-elisp-builtins-features)))
          (annotf (lambda (str)
                    (format " (%s)" (cdr (assoc str alist)))))
@@ -988,8 +1129,9 @@ See function `straight-extra--parse-list-at-point'."
                          (complete-with-action action alist str pred))))))
 
 (defun straight-extra-eval-string (str)
-  "Read and evaluate all forms in STR.
-Return the results of all forms as a list."
+  "Evaluate Lisp expressions from a string sequentially.
+
+Argument STR is a string containing Emacs Lisp code to be evaluated."
   (let ((next 0)
         ret)
     (condition-case nil
@@ -1002,10 +1144,13 @@ Return the results of all forms as a list."
       (end-of-file))
     (nreverse ret)))
 
-
 ;;;###autoload
 (defun straight-extra-jump-or-insert-to-use-package-keyword (&optional keyword)
-  "Jumpt to the end of KEYWORD is `use-package' form."
+  "Jump to or insert a `use-package' keyword.
+
+Optional argument KEYWORD is a symbol or string representing the `use-package'
+KEYWORD to jump to or insert. If not provided, the user is prompted to choose
+one."
   (interactive)
   (pcase-let ((`(,beg . ,_end)
                (straight-extra-get-use-package-bounds)))
@@ -1063,7 +1208,13 @@ Return the results of all forms as a list."
         (goto-char keyword-end)))))
 
 (defun straight-extra-replace-or-insert-keyword (keyword value)
-  "Change value of KEYWORD in `use-package' with new VALUE."
+  "Replace or insert KEYWORD with VALUE in `use-package' declaration.
+
+Argument KEYWORD is a symbol representing the keyword to be replaced or
+inserted.
+
+Argument VALUE is a string representing the value to be associated with the
+KEYWORD."
   (let* ((keywords (straight-extra-get-use-package-keywords))
          (keyword-name (symbol-name keyword)))
     (cond ((not (memq keyword keywords))
@@ -1071,7 +1222,7 @@ Return the results of all forms as a list."
                         (straight-extra-get-use-package-bounds)))
              (goto-char beg)
              (if (not (memq keyword '(:init :straight
-                                            :preface)))
+                                      :preface)))
                  (progn (forward-sexp 1)
                         (forward-char -1)
                         (unless (looking-back "\n" 0)
@@ -1093,8 +1244,12 @@ Return the results of all forms as a list."
                                         (concat keyword-name "\s" value))))))))
 
 (defun straight-extra-read-use-package-maps (maps &optional existing-maps)
-  "Read `use-package' MAPS in minibuffer.
-EXISTING-MAPS used for annotations and should be the same form, as MAPS."
+  "Read keymap names with completion and annotations.
+
+Argument MAPS is a list of keymap names to be completed.
+
+Optional argument EXISTING-MAPS is a list of already existing keymap names that
+can be used for annotation."
   (let* ((alist
           (append (list 'global-map)
                   (seq-uniq (mapcar #'car (append maps existing-maps)))))
@@ -1114,7 +1269,10 @@ EXISTING-MAPS used for annotations and should be the same form, as MAPS."
                                                pred))))))
 
 (defun straight-extra-maps-to-alist (maps)
-  "Convert MAPS form to alists."
+  "Convert keymaps in MAPS to an alist.
+
+Argument MAPS is a list where each element is either a keyword or a cons cell.
+The keyword `:map' indicates the start of a new keymap association."
   (let ((curr maps)
         (globals)
         (result))
@@ -1137,11 +1295,15 @@ EXISTING-MAPS used for annotations and should be the same form, as MAPS."
             (t (setq globals (push curr globals)))))
     (cons globals result)))
 
-
-
 ;;;###autoload
 (defun straight-extra-insert-keymap (&optional map-sym keyword)
-  "Insert KEYWORD (:bind or :bind*) with package MAP-SYM."
+  "Insert key bindings into a specified keymap.
+
+Optional argument MAP-SYM is a symbol representing the keymap to insert into.
+
+Optional argument KEYWORD is a keyword symbol used to specify the type of
+binding; it defaults to either `:bind' or `:bind*' based on the presence of
+`:bind*' in `straight-extra-get-use-package-keywords'."
   (interactive)
   (unless keyword (setq keyword
                         (if
@@ -1206,7 +1368,7 @@ EXISTING-MAPS used for annotations and should be the same form, as MAPS."
                             (if (eq action 'metadata)
                                 `(metadata
                                   (annotation-function .
-                                                       ,annotf)
+                                   ,annotf)
                                   (category . keymap))
                               (complete-with-action action
                                                     (append
@@ -1230,20 +1392,38 @@ EXISTING-MAPS used for annotations and should be the same form, as MAPS."
                        (straight-extra-insert-keymap map-sym keyword)))
          map)))))
 
+;;;###autoload
 (defun straight-extra-insert-bind (&optional map-sym)
-  "Insert :bind KEYWORD with package MAP-SYM."
+  "Insert a key binding for a package's command.
+
+Optional argument MAP-SYM is a symbol representing the keymap to which the
+binding will be added."
   (interactive)
   (straight-extra-insert-keymap map-sym :bind))
 
+;;;###autoload
 (defun straight-extra-insert-bind* (&optional map-sym)
-  "Insert :bind* KEYWORD with package MAP-SYM."
+  "Insert :bind* keyword with optional MAP-SYM.
+
+Optional argument MAP-SYM is a symbol representing the keymap to which the
+binding will be added. If not provided, it defaults to nil."
   (interactive)
   (straight-extra-insert-keymap map-sym :bind*))
 
 (defun straight-extra-insert-command (command keyword &optional map-sym
                                               maps-alist)
-  "Insert KEYWORD (bind or bind*) with COMMAND, possible with keymap MAP-SYM.
-MAPS-ALIST is package keymaps."
+  "Insert or update a COMMAND binding in a keymap definition.
+
+Argument COMMAND is a string representing the command to insert.
+
+Argument KEYWORD is a keyword symbol used to identify the section where the
+COMMAND should be inserted.
+
+Optional argument MAP-SYM is a symbol representing the keymap to which the
+COMMAND should be added.
+
+Optional argument MAPS-ALIST is an alist where each element is a cons cell with
+a keymap symbol and its associated commands."
   (when (eq map-sym 'global-map)
     (setq map-sym nil))
   (let* ((current-maps
@@ -1377,7 +1557,7 @@ MAPS-ALIST is package keymaps."
   (message "Type z to repeat"))
 
 (defun straight-extra-read-custom-variables ()
-  "Read custom variables."
+  "Prompt for custom variable selection with annotations."
   (let* ((alist (cdr
                  (when-let ((lib (straight-extra-get-current-package-name)))
                    (append
@@ -1425,7 +1605,7 @@ MAPS-ALIST is package keymaps."
                          (complete-with-action action alist str pred))))))
 
 (defun straight-extra-get-customs ()
-  "Insert custom settings inside `use-package'."
+  "Extract custom variables from the current package."
   (when-let* ((package-name (straight-extra-get-current-package-name))
               (items (straight-extra-get-library-items package-name))
               (customs (cdr (assq :custom items))))
@@ -1434,10 +1614,9 @@ MAPS-ALIST is package keymaps."
                     (plist-get (cdr it) :value)))
             customs)))
 
-
 ;;;###autoload
 (defun straight-extra-insert-customs ()
-  "Insert custom settings inside `use-package'."
+  "Insert missing `:custom' entries into `use-package' form."
   (interactive)
   (let* ((current-customs (straight-extra-get-keyword-value-sexps
                            :custom))
@@ -1456,7 +1635,7 @@ MAPS-ALIST is package keymaps."
 
 ;;;###autoload
 (defun straight-extra-insert-setq-customs ()
-  "Insert custom settings inside `use-package'."
+  "Insert `use-package' custom settings not already present."
   (interactive)
   (let* ((current-customs (straight-extra-get-keyword-value-sexps
                            :config))
@@ -1473,9 +1652,8 @@ MAPS-ALIST is package keymaps."
       (when (fboundp 'prettier-elisp)
         (prettier-elisp)))))
 
-
 (defun straight-extra-insert-load-path ()
-  "Insert :load-path inside `use-package'."
+  "Insert or change `:load-path' in `use-package' declaration."
   (interactive)
   (let* ((current-value
           (car (straight-extra-get-keyword-value-sexps :load-path)))
@@ -1487,7 +1665,7 @@ MAPS-ALIST is package keymaps."
 
 ;;;###autoload
 (defun straight-extra-insert-config-keyword ()
-  "Insert :config recipe to current use package form."
+  "Insert or update `:config' keyword values in `use-package' form."
   (interactive)
   (let ((keywords (straight-extra-get-use-package-keywords))
         (sexps (straight-extra-get-keyword-value-sexps :config)))
@@ -1518,7 +1696,7 @@ MAPS-ALIST is package keymaps."
 
 ;;;###autoload
 (defun straight-extra-insert-straight-keyword ()
-  "Insert :straight recipe to current use package form."
+  "Insert `:straight' keyword into `use-package' declaration."
   (interactive)
   (let ((recipe (straight-extra-current-recipe))
         (keywords (straight-extra-get-use-package-keywords))
@@ -1540,8 +1718,8 @@ MAPS-ALIST is package keymaps."
                                                          "user.email")))))
                       `(:repo ,(substring-no-properties
                                 (gh-repo-read-user-repo 'identity))
-                              :type git
-                              :host github))
+                        :type git
+                        :host github))
                      ((and (fboundp 'git-util-url-get-candidates)
                            (fboundp 'git-util-url-to-recipe))
                       (let ((url
@@ -1550,12 +1728,12 @@ MAPS-ALIST is package keymaps."
                               (git-util-url-get-candidates))))
                         (or (git-util-url-to-recipe)
                             `(:repo ,(read-string "Repo:" url)
-                                    :type git
-                                    :host github))))
+                              :type git
+                              :host github))))
                      (t
                       `(:repo ,(read-string "Repo")
-                              :type git
-                              :host ,(read-string "Host")))))
+                        :type git
+                        :host ,(read-string "Host")))))
               ("nil" nil)
               (_ choice))))
       (setq result (if (listp result)
@@ -1580,11 +1758,8 @@ MAPS-ALIST is package keymaps."
                          (concat " " result)
                        result)))))))
 
-
-
-
 (defun straight-extra-get-package-commands ()
-  "Return keymaps for current `use-package' form."
+  "Extract commands from the current package."
   (when-let ((lib (straight-extra-get-current-package-name)))
     (pcase-let ((`(,beg . ,end)
                  (straight-extra-get-use-package-bounds)))
@@ -1596,10 +1771,8 @@ MAPS-ALIST is package keymaps."
               (cdr (assq :commands
                          (straight-extra-get-library-items lib)))))))
 
-
-
 (defun straight-extra-get-package-keymaps ()
-  "Return keymaps for current `use-package' form."
+  "Extract keymaps from a package's `:bind' declarations."
   (when-let ((lib (straight-extra-get-current-package-name)))
     (pcase-let ((`(,beg . ,end)
                  (straight-extra-get-use-package-bounds)))
@@ -1619,9 +1792,16 @@ MAPS-ALIST is package keymaps."
 
 (defun straight-extra-generate-use-package-string (reponame &optional user
                                                             commands maps)
-  "Generate string straght and use package installation from USER and REPONAME.
-With COMMANDS also insert :commands.
-With MAPS also insert :bind."
+  "Generate a `use-package' declaration string.
+
+Argument REPONAME is a string representing the repository name.
+
+Optional argument USER is a string representing the GitHub username.
+
+Optional argument COMMANDS is a list of strings representing Emacs commands.
+
+Optional argument MAPS is an alist where each element is a cons cell with a
+keymap symbol and a list of keybindings."
   (straight-extra-autodoc-with-temp-lisp-buffer
       (indent-tabs-mode -1)
       (insert
@@ -1692,10 +1872,9 @@ With MAPS also insert :bind."
       (buffer-substring-no-properties (point-min)
                                       (point-max)))))
 
-
 ;;;###autoload
 (defun straight-extra-configure-package ()
-  "Insert `use-package' skeleton for PACKAGE-NAME."
+  "Configure package settings within `use-package' forms."
   (interactive)
   (if (straight-extra-inside-use-package-p)
       (progn (straight-extra-insert-keymap))
@@ -1719,9 +1898,39 @@ With MAPS also insert :bind."
                       straight-recipe-repositories))))))
         (forward-char 1)))))
 
+(defun straight-extra-sort-readme (files)
+  "Sort README FILES by priority based on name and extension.
+
+Argument FILES is a list of file paths to be sorted."
+  (seq-sort-by
+   (lambda (it)
+     (let ((name (file-name-base it))
+           (ext (file-name-extension it)))
+       (pcase ext
+         ((and "org"
+               (guard (string-match-p "manual" name)))
+          5)
+         ((and "org"
+               (guard (string-match-p "guide" name)))
+          4)
+         ((and "org"
+               (guard (string-match-p "readme" name)))
+          3)
+         ((and
+           "md"
+           (guard (string-match-p "readme" name)))
+          2)
+         ((guard (string-match-p "readme" name))
+          1)
+         (_ -1))))
+   #'>
+   files))
+
 (defun straight-extra-locate-doc-files (package)
-  "Return documentation files for PACKAGE.
-PACKAGE should be either string or symbol."
+  "Locate documentation files for a given PACKAGE.
+
+Argument PACKAGE is the name of the package for which to locate documentation
+files. It can be a symbol or a string."
   (when-let* ((libfile (ignore-errors (file-truename
                                        (find-library-name
                                         (if (symbolp package)
@@ -1764,7 +1973,9 @@ PACKAGE should be either string or symbol."
         files)))
 
 (defun straight-extra-parse-readme (readme)
-  "Extra `use-package' examples form README."
+  "Extract `use-package' forms from README file.
+
+Argument README is the path to the readme file to be parsed."
   (when (and readme (file-exists-p readme))
     (with-current-buffer (find-file-noselect readme)
       (goto-char (point-max))
@@ -1787,7 +1998,10 @@ PACKAGE should be either string or symbol."
         (string-join (delq nil founds) "\n\n")))))
 
 (defun straight-extra-find-file-readme (package)
-  "Find file in other window for PACKAGE."
+  "Open documentation files for a given PACKAGE.
+
+Argument PACKAGE is the name of the package for which to find and open the
+README file."
   (when-let ((files (straight-extra-locate-doc-files
                      package))
              (file (car files)))
@@ -1796,7 +2010,12 @@ PACKAGE should be either string or symbol."
       (straight-extra-cycle-files files file))))
 
 (defun straight-extra-file-visit (file &optional other-wind)
-  "Select FILE window, if any or find FILE in OTHER-WIND if non nil."
+  "Open FILE in an existing window or a new one, optionally in OTHER-WIND.
+
+Argument FILE is the name of the file to visit.
+
+Optional argument OTHER-WIND is a boolean; if non-nil, the FILE is opened in the
+current window, otherwise in another window."
   (cond ((and (buffer-live-p (get-file-buffer file))
               (get-buffer-window (get-file-buffer file)))
          (select-window (get-buffer-window file)))
@@ -1806,7 +2025,15 @@ PACKAGE should be either string or symbol."
            (find-file-other-window file)))))
 
 (defun straight-extra-index-switcher (step current-index switch-list)
-  "Increase or decrease CURRENT-INDEX depending on STEP value and SWITCH-LIST."
+  "Switch to next or previous index in SWITCH-LIST based on STEP.
+
+Argument STEP is an integer indicating the number of steps to move in the switch
+list.
+
+Argument CURRENT-INDEX is an integer representing the current position in the
+switch list.
+
+Argument SWITCH-LIST is a list of elements to switch between."
   (cond ((> step 0)
          (if (>= (+ step current-index)
                  (length switch-list))
@@ -1818,7 +2045,14 @@ PACKAGE should be either string or symbol."
            (1- (length switch-list))))))
 
 (defun straight-extra-cycle-items (action items &optional init-idx)
-  "Cycle ITEMS with ACTION starting from INIT-IDX."
+  "Cycle through ITEMS based on user input.
+
+Argument ACTION is a function to be called with the current item from ITEMS.
+
+Argument ITEMS is a list of items to cycle through.
+
+Optional argument INIT-IDX is the initial index in ITEMS to start from; it
+defaults to 0."
   (let ((idx (or init-idx 0)))
     (unwind-protect
         (progn
@@ -1849,7 +2083,12 @@ PACKAGE should be either string or symbol."
       (nth idx items))))
 
 (defun straight-extra-cycle-files (files &optional file)
-  "Cycle FILES with n and p keys, starting from FILE."
+  "Cycle through FILES and open with `find-file'.
+
+Argument FILES is a list of FILE paths to cycle through.
+
+Optional argument FILE is the current file path to start cycling from; if not
+provided, the first FILE in FILES is used as the starting point."
   (let ((file (or file (car files))))
     (when (> (length files) 1)
       (when (active-minibuffer-window)
@@ -1857,7 +2096,10 @@ PACKAGE should be either string or symbol."
       (straight-extra-cycle-items 'find-file files (seq-position files file)))))
 
 (defun straight-extra-find-readme-other-window-for-current (package)
-  "Find file in other window for PACKAGE."
+  "Open README in another window for a package.
+
+Argument PACKAGE is a string or symbol representing the package for which to
+find and display the README file in another window."
   (when-let ((files (straight-extra-locate-doc-files
                      package))
              (file (car files)))
@@ -1868,7 +2110,11 @@ PACKAGE should be either string or symbol."
 
 ;;;###autoload
 (defun straight-extra-insert-use-package (&optional library)
-  "Insert `use-package' skeleton for LIBRARY."
+  "Insert `use-package' declaration for a chosen Emacs package.
+
+Optional argument LIBRARY is the name of the library for which to generate a
+`use-package' declaration. If not provided, the user will be prompted to enter a
+LIBRARY name."
   (interactive)
   (let ((orig-buffer (current-buffer)))
     (when-let* ((lib (or library (read-library-name)))
@@ -1895,14 +2141,14 @@ PACKAGE should be either string or symbol."
 
 ;;;###autoload
 (defun straight-extra-insert-use-package-at-point ()
-  "Eval and insert use package form with package."
+  "Insert `use-package' declaration at cursor position."
   (interactive)
   (let* ((actions (remove nil
                           `((?e "existing")
                             ,(when (and
                                     (require 'gh-repo nil t)
                                     (fboundp 'gh-repo-read-user-repo))
-                               '(?m "my repo"))
+                              '(?m "my repo"))
                             (?c "clone new")
                             (?b "built-in lib")
                             (?o "other"))))
@@ -1947,11 +2193,20 @@ PACKAGE should be either string or symbol."
       (?o
        (insert "(use-package " (read-string "Package:\s")" )")))))
 
-(defvar straight-extra-last-written-file nil)
+(defvar straight-extra-last-written-file nil
+  "Path of the most recently written file by straight.el.")
 
 ;;;###autoload
 (defun straight-extra-install-package (package &optional outfile insert-pos)
-  "Install PACKAGE and write it to OUTFILE at INSERT-POS."
+  "Install PACKAGE and optionally write its configuration.
+
+Argument PACKAGE is a string specifying the name of the package to install.
+
+Optional argument OUTFILE is a string or symbol determining where to save the
+configuration for the installed package. If `no-write', no file is written.
+
+Optional argument INSERT-POS is a buffer position where the `use-package'
+declaration should be inserted. If nil, it is inserted at the end of the buffer."
   (interactive (list (or (and (derived-mode-p 'straight-extra-table-report-mode)
                               (tabulated-list-get-id))
                          (straight-extra-read-package))))
@@ -2058,9 +2313,12 @@ PACKAGE should be either string or symbol."
           (straight-extra-find-readme-other-window-for-current package))))))
 
 (defun straight-extra-serialize (data filename)
-  "Serialize DATA to FILENAME.
+  "Save DATA to FILENAME, creating directory if needed.
 
-The saved data can be restored with `straight-extra-unserialize'."
+Argument DATA is the object to be serialized.
+
+Argument FILENAME is the name of the file where the serialized DATA will be
+saved."
   (unless (file-exists-p
            (file-name-directory
             filename))
@@ -2074,7 +2332,9 @@ The saved data can be restored with `straight-extra-unserialize'."
          (prin1-to-string data))))))
 
 (defun straight-extra-unserialize (filename)
-  "Read data serialized by `straight-extra-serialize' from FILENAME."
+  "Deserialize and return contents of FILENAME.
+
+Argument FILENAME is the name of the file to deserialize."
   (with-demoted-errors
       "Error during file deserialization: %S"
     (when (file-exists-p filename)
@@ -2083,14 +2343,15 @@ The saved data can be restored with `straight-extra-unserialize'."
         (read (buffer-string))))))
 
 (defun straight-extra-re-search-forward-inner (regexp &optional bound count)
-  "This function is helper for `straight-extra-re-search-forward'.
-Search forward from point for regular expression REGEXP.
-The optional argument BOUND is a buffer position that bounds
-  the search.  The match found must not end after that position.  A
-  value of nil means search to the end of the accessible portion of
-  the buffer.
-The optional argument COUNT is a number that indicates the
-  search direction and the number of occurrences to search for."
+  "Search forward, skipping strings and comments.
+
+Argument REGEXP is a regular expression string to search for.
+
+Optional argument BOUND is the buffer position to limit the search; nil means
+search to the end of the accessible portion of the buffer.
+
+Optional argument COUNT is the number of successful matches to find; nil means
+search until the end of the buffer."
   (let ((parse))
     (while (> count 0)
       (with-syntax-table emacs-lisp-mode-syntax-table
@@ -2109,14 +2370,15 @@ The optional argument COUNT is a number that indicates the
   (point))
 
 (defun straight-extra-re-search-backward-inner (regexp &optional bound count)
-  "This function is helper for `straight-extra-re-search-backward'.
-Search backward from point for regular expression REGEXP.
-The optional argument BOUND is a buffer position that bounds
-  the search.  The match found must not end after that position.  A
-  value of nil means search to the end of the accessible portion of
-  the buffer.
-The optional argument COUNT is a number that indicates the
-  search direction and the number of occurrences to search for."
+  "Search backward for REGEXP, skipping over strings and comments.
+
+Argument REGEXP is a regular expression string to search backward for.
+
+Optional argument BOUND is a buffer position that bounds the search; it must not
+be smaller than (point-min).
+
+Optional argument COUNT is the number of successful matches to find; it defaults
+to 1."
   (let ((parse))
     (while (> count 0)
       (with-syntax-table emacs-lisp-mode-syntax-table
@@ -2133,8 +2395,17 @@ The optional argument COUNT is a number that indicates the
   (point))
 
 (defun straight-extra-re-search-forward (regexp &optional bound noerror count)
-  "Search forward from point for REGEXP ignoring elisp comments and strings.
-Arguments BOUND, NOERROR, COUNT has the same meaning as `re-search-forward'."
+  "Search forward using REGEXP, optionally up to BOUND, COUNT times.
+
+Argument REGEXP is a regular expression string to search for.
+
+Optional argument BOUND is a buffer position that bounds the search; it must be
+a number or a marker, or nil.
+
+Optional argument NOERROR, if non-nil, means do not signal an error if the
+search fails, and return nil instead.
+
+Optional argument COUNT is the number of times to search; it defaults to 1."
   (unless count (setq count 1))
   (let ((init-point (point))
         (search-fun
@@ -2152,8 +2423,12 @@ Arguments BOUND, NOERROR, COUNT has the same meaning as `re-search-forward'."
                  (cdr err)))))))
 
 (defun straight-extra-move-with (fn &optional n)
-  "Move by calling FN N times.
-Return new position if changed, nil otherwise."
+  "Move point using FN, optionally N times, within syntax table scope.
+
+Argument FN is a function that moves the point and returns the new position.
+
+Optional argument N is an integer specifying the number of times to move; it
+defaults to 1."
   (with-syntax-table emacs-lisp-mode-syntax-table
     (unless n (setq n 1))
     (when-let ((str-start (nth 8 (syntax-ppss (point)))))
@@ -2174,23 +2449,38 @@ Return new position if changed, nil otherwise."
         nil))))
 
 (defun straight-extra-backward-list (&optional arg)
-  "Move backward up across ARG balanced group of parentheses.
-Return new position if changed, nil otherwise."
+  "Move backward over a list by ARG elements.
+
+Optional argument ARG is the number of times to move backward over a
+parenthetical group. It defaults to 1."
   (straight-extra-move-with 'backward-list arg))
 
 (defun straight-extra-backward-up-list (&optional arg)
-  "Move backward up across ARG balanced group of parentheses.
-Return new position if changed, nil otherwise."
+  "Move backward out of one level of parentheses.
+
+Optional argument ARG is the number of times to move backward out of one level
+of parentheses. It defaults to 1."
   (straight-extra-move-with 'backward-up-list arg))
 
 (defun straight-extra-re-search-backward (regexp &optional bound noerror count)
-  "Search backward from point for REGEXP ignoring elisp comments and strings.
-Arguments BOUND, NOERROR, COUNT has the same meaning as `re-search-forward'."
+  "Search backward for REGEXP, skipping elisp comments and strings.
+
+Argument REGEXP is a regular expression to search for.
+
+Optional argument BOUND is the position in the buffer to stop searching.
+
+Optional argument NOERROR, if non-nil, means do not signal an error if the
+search fails.
+
+Optional argument COUNT is the number of times to search backward; it defaults
+to 1."
   (straight-extra-re-search-forward regexp bound noerror (if count
                                                              (- count) -1)))
 
 (defun straight-extra-annotate-melpa-description (package)
-  "Return annotation for PACKAGE."
+  "Annotate PACKAGE description with MELPA metadata.
+
+Argument PACKAGE is a symbol or string representing the package to annotate."
   (let* ((item (alist-get
                 (if (stringp package)
                     (intern package)
@@ -2227,25 +2517,24 @@ Arguments BOUND, NOERROR, COUNT has the same meaning as `re-search-forward'."
 (defvar json-null)
 (defvar json-object-type)
 (defvar json-array-type)
+
 (declare-function json-read "json")
 
 (defun straight-extra-read-json (&optional object-type array-type false-object
                                            null-object)
-  "Parse STR with natively compiled function or with json library.
+  "Parse JSON from buffer into Lisp objects.
 
-The argument OBJECT-TYPE specifies which Lisp type is used
-to represent objects; it can be `hash-table', `alist' or `plist'.  It
-defaults to `alist'.
+Optional argument OBJECT-TYPE is the type used to represent objects; it defaults
+to `alist'.
 
-The argument ARRAY-TYPE specifies which Lisp type is used
-to represent arrays; `array'/`vector' and `list'.
+Optional argument ARRAY-TYPE specifies which Lisp type is used to represent
+arrays; it defaults to `array'.
 
-The argument NULL-OBJECT specifies which object to use
-to represent a JSON null value.
-If NULL-OBJECT is nil or `'nil', will be converted to nil.
+Optional argument FALSE-OBJECT specifies which object to use to represent a JSON
+false value; it defaults to `:false'.
 
-The argument FALSE-OBJECT specifies which object to use to
-represent a JSON false value.  It defaults to `:false'."
+Optional argument NULL-OBJECT specifies which object to use to represent a JSON
+null value; it defaults to nil."
   (if (and (fboundp 'json-parse-string)
            (fboundp 'json-available-p)
            (json-available-p))
@@ -2274,7 +2563,9 @@ represent a JSON false value.  It defaults to `:false'."
         (json-read)))))
 
 (defun straight-extra-fetch-json (url)
-  "Fetch json data at URL."
+  "Fetch JSON from URL and return as an alist.
+
+Argument URL is a string specifying the location from which to fetch JSON data."
   (with-temp-buffer
     (url-insert-file-contents url)
     (straight-extra-read-json 'alist
@@ -2282,7 +2573,10 @@ represent a JSON false value.  It defaults to `:false'."
                               :false)))
 
 (defun straight-extra-ensure-melpa (&optional force)
-  "Fetch melpa archives. With FORCE inhibit cache."
+  "Fetch and cache MELPA package archive data.
+
+Optional argument FORCE is a boolean indicating whether to force the update of
+the MELPA package archive alist, ignoring any cached data."
   (cond ((and (not force)
               straight-extra-melpa-packages-archive-alist)
          straight-extra-melpa-packages-archive-alist)
@@ -2323,11 +2617,14 @@ represent a JSON false value.  It defaults to `:false'."
            straight-extra-melpa-packages-archive-alist))))
 
 (defun straight-extra-ensure-downloads ()
-  "Fetch json data at URL."
+  "Fetch download counts from MELPA's JSON endpoint."
   (straight-extra-fetch-json "https://melpa.org/download_counts.json"))
-(defvar straight-extra-melpa-downloads nil)
+
+(defvar straight-extra-melpa-downloads nil
+  "Number of additional package downloads from MELPA.")
+
 (defun straight-extra-add-downloads ()
-  "Fetch json data at URL."
+  "Update package download counts from MELPA's JSON data."
   (setq straight-extra-melpa-downloads
         (straight-extra-fetch-json
          "https://melpa.org/download_counts.json"))
@@ -2343,12 +2640,16 @@ represent a JSON false value.  It defaults to `:false'."
         (setcdr item data)))))
 
 (defun straight-extra--alistp (list)
-  "Return T if LIST is an association list."
+  "Check if LIST is a proper alist.
+
+Argument LIST is a proper list to be checked if it is an alist."
   (and (proper-list-p list)
        (seq-every-p #'consp list)))
 
 (defun straight-extra-to-string (item)
-  "Convert ITEM to STING."
+  "Convert ITEM to a string representation recursively.
+
+Argument ITEM is the object to be converted to a string representation."
   (pcase item
     ((pred straight-extra--alistp)
      (mapcar (lambda (it)
@@ -2368,10 +2669,14 @@ represent a JSON false value.  It defaults to `:false'."
     ((pred listp)
      (mapcar #'straight-extra-to-string item))))
 
-
-
 (defun straight-extra-pick-from-alist (props alist)
-  "Pick PROPS from ALIST."
+  "Extract values from ALIST using keys and formats in PROPS.
+
+Argument PROPS is a list of cons cells where the car is a key and the cdr is a
+function used to format the value associated with the key.
+
+Argument ALIST is an association list where each cons cell has a key in the car
+and the associated value in the cdr."
   (mapcar (lambda (cell)
             (let ((key (car cell))
                   (value-format (or (cdr cell)
@@ -2386,7 +2691,9 @@ represent a JSON false value.  It defaults to `:false'."
           props))
 
 (defun straight-extra-add-sorters (columns)
-  "Add sorters by number to COLUMNS."
+  "Add numeric sorters to COLUMN definitions.
+
+Argument COLUMNS is a list where each element is a column specification."
   (apply #'vector
          (seq-map-indexed
           (lambda (col i)
@@ -2399,29 +2706,33 @@ represent a JSON false value.  It defaults to `:false'."
                            (string-to-number (or b "0")))))))
             col)
           columns)))
+
 (defvar straight-extra-table-report-mode-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map
                        tabulated-list-mode-map)
     (define-key map (kbd "RET")
                 #'straight-extra-install-package)
-    map))
+    map)
+  "Keymap for extra table report mode with package install function.")
+
 (define-derived-mode straight-extra-table-report-mode tabulated-list-mode
   "straight-extra-table report."
-  "Show report gathered about unused definitions."
+  "Display a sortable table with package details.
+
+Display a tabulated list report for Straight package management, with sortable
+columns for package name, description, year, load count, and keywords."
   (setq tabulated-list-format
         (straight-extra-add-sorters
          [("Package" 20 t)
           ("Description" 50 nil)
           ("Year" 5 number)
           ("Loads" 10 number)
-          ("Keywords" 10)
-          ]))
+          ("Keywords" 10)]))
   (tabulated-list-init-header))
 
-
 (defun straight-extra-map-entries-alist ()
-  "Map `straight-extra-melpa-packages-archive-alist' to tabulated entries."
+  "Map package entries to a result list."
   (let ((result))
     (pcase-dolist (`(,id . ,cell) straight-extra-melpa-packages-archive-alist)
       (let ((name (symbol-name id))
@@ -2452,7 +2763,7 @@ represent a JSON false value.  It defaults to `:false'."
                                      (if installed
                                          (list
                                           'follow-link t
-                                          'face 'font-lock-type-face
+                                          'face 'font-lock-builtin-face
                                           'button-data name
                                           'action
                                           #'straight-extra-preview-installed-location)
@@ -2470,6 +2781,7 @@ represent a JSON false value.  It defaults to `:false'."
                                keywords))))
                 result))))
     result))
+
 ;; ;;;###autoload
 ;; (defun straight-extra-vtable (&optional force)
 ;;   "Show ITEMS in Tabulated List buffer.
@@ -2506,8 +2818,10 @@ represent a JSON false value.  It defaults to `:false'."
 ;;     (pop-to-buffer (current-buffer))))
 ;;;###autoload
 (defun straight-extra-list-packages (&optional force)
-  "Show ITEMS in Tabulated List buffer.
-With prefix argument FORCE to refetch archives."
+  "Display a list of Melpa packages in a buffer.
+
+Optional argument FORCE is a prefix argument; if non-nil, the cache is ignored
+and the package list is refreshed."
   (interactive "P")
   (with-current-buffer (get-buffer-create "*Melpa Packages*")
     (straight-extra-table-report-mode)
@@ -2518,12 +2832,9 @@ With prefix argument FORCE to refetch archives."
     (unless (get-buffer-window (current-buffer))
       (pop-to-buffer (current-buffer)))))
 
-
-
-
 ;;;###autoload
 (defun straight-extra-browse-in-other-window ()
-  "Abort minibuffers and browse current package."
+  "Open a URL from minibuffer selection in another window."
   (interactive)
   (when-let ((current
               (straight-extra-minibuffer-item)))
@@ -2539,7 +2850,7 @@ With prefix argument FORCE to refetch archives."
 
 ;;;###autoload
 (defun straight-extra-browse-preview ()
-  "Browse current package without exiting minibuffer."
+  "Preview repository in browser based on minibuffer selection."
   (interactive)
   (when-let ((current
               (straight-extra-minibuffer-item)))
@@ -2558,11 +2869,16 @@ With prefix argument FORCE to refetch archives."
     (define-key map
                 (kbd "C-j")
                 #'straight-extra-browse-preview)
-    map))
+    map)
+  "Keymap for additional minibuffer shortcuts in Straight.el.")
 
 ;;;###autoload
 (defun straight-extra-completing-read-package (packages &optional predicate)
-  "Read PACKAGES with annotated completions and PREDICATE."
+  "Choose a package with annotations from a list using completion.
+
+Argument PACKAGES is a list of package names to choose from.
+
+Optional argument PREDICATE is a function to filter the package names."
   (interactive)
   (let ((items (mapcar (lambda (key)
                          (concat key (straight-extra--annotate key)))
@@ -2580,14 +2896,19 @@ With prefix argument FORCE to refetch archives."
                                           'require-match)
                          nil t)))))
 
-
 (defun straight-extra-table-get-prop (item property)
-  "Get PROPERTY at ITEM.
-ITEM should be a propertized string."
+  "Retrieve PROPERTY from ITEM at position 0.
+
+Argument ITEM is the string or buffer from which to extract the property.
+
+Argument PROPERTY is the text property to retrieve from ITEM."
   (get-text-property 0 property item))
 
 (defun straight-extra-table-button-action (button)
-  "Run an action for BUTTON."
+  "Open file from BUTTON and prompt to remove entry.
+
+Argument BUTTON is a marker pointing to the location in the buffer where the
+BUTTON is located."
   (let ((current-window (selected-window))
         (props (get-text-property button 'props
                                   (marker-buffer button)))
@@ -2601,9 +2922,11 @@ ITEM should be a propertized string."
         (when (with-current-buffer buff
                 (yes-or-no-p "Remove?"))
           (when-let ((found (seq-find
-                             (lambda (it) (let ((id (car it)))
-                                            (equal id
-                                                   (straight-extra-table-get-prop props :id))))
+                             (lambda (it)
+                               (let ((id (car it)))
+                                 (equal id
+                                        (straight-extra-table-get-prop
+                                         props :id))))
                              (buffer-local-value
                               'tabulated-list-entries
                               report-buffer))))
@@ -2612,12 +2935,12 @@ ITEM should be a propertized string."
                                                    tabulated-list-entries))
               (tabulated-list-revert))))))))
 
-
-
 ;;;###autoload
 (defun straight-extra-browse-package (&optional arg)
-  "Interectively browse a package.
-With prefix argument ARG force to refetch archives."
+  "Open a browser to view details of a selected package.
+
+Optional argument ARG is a prefix argument that, when non-nil, ensures the MELPA
+repository is available before browsing."
   (interactive "P")
   (straight-extra-ensure-melpa arg)
   (straight-extra-browse-action
@@ -2625,14 +2948,101 @@ With prefix argument ARG force to refetch archives."
                           (straight-recipes-list))))
 
 (defun straight-extra-read-package (&optional arg)
-  "Read a package with annotated completions.
-With prefix argument ARG force to refetch archives."
+  "Prompt for a package name with completion after ensuring MELPA.
+
+Optional argument ARG is a prefix argument; if non-nil, MELPA recipes are
+ensured before reading the package name."
   (straight-extra-ensure-melpa arg)
   (straight-extra-completing-read-package
    (straight-recipes-list)))
 
+(defun straight-extra-fetch-repo-path (repo path)
+  "Fetch and display file PATH from REPO on GitHub.
+
+Argument REPO is a string specifying the GitHub repository in the format
+\"username/repository\".
+
+Argument PATH is a string specifying the file path within the repository to
+fetch."
+  (let (url)
+    (setq url (format "https://raw.githubusercontent.com/%s/HEAD/%s" repo path))
+    (url-retrieve url
+                  (lambda (arg)
+                    (cond ((equal :error (car arg))
+                           (message arg))
+                          (t
+                           (with-current-buffer (current-buffer)
+                             (let (data)
+                               (goto-char (point-min))
+                               (re-search-forward "^$")
+                               (delete-region (+ 1 (point))
+                                              (point-min))
+                               (goto-char (point-min))
+                               (setq data (buffer-string))
+                               (with-selected-window (selected-window)
+                                 (with-current-buffer
+                                     (get-buffer-create
+                                      "*straight-extra-preview*")
+                                   (erase-buffer)
+                                   (insert data)
+                                   (delay-mode-hooks
+                                     (let ((buffer-file-name
+                                            (expand-file-name
+                                             path
+                                             (temporary-file-directory))))
+                                       (set-auto-mode t)))
+                                   (font-lock-ensure)
+                                   (pop-to-buffer (current-buffer))
+                                   (goto-char (point-min))))))))))))
+
+(defun straight-extra-fetch-repo-paths (package-name)
+  "Fetch repository paths for PACKAGE-NAME.
+
+Argument PACKAGE-NAME is a string or symbol representing the package name."
+  (setq package-name (if (stringp package-name)
+                         (intern (car (split-string package-name)))
+                       package-name))
+  (straight--with-plist (straight--convert-recipe package-name)
+      (host repo)
+    (pcase host
+      ('github
+       (url-retrieve
+        (format
+         "https://api.github.com/repos/%s/git/trees/HEAD:?recursive=1"
+         repo)
+        (lambda (arg)
+          (cond ((equal :error (car arg))
+                 (message arg))
+                (t
+                 (with-current-buffer (current-buffer)
+                   (goto-char (point-min))
+                   (re-search-forward "^$")
+                   (delete-region (+ 1 (point))
+                                  (point-min))
+                   (goto-char (point-min))
+                   (when-let* ((paths
+                                (seq-filter
+                                 (apply-partially #'string-match-p
+                                                  "readme\\|manual\\|guide")
+                                 (remove nil
+                                         (mapcar
+                                          (lambda (x)
+                                            (pcase (cdr (assq 'type x))
+                                              ("blob" (cdr (assq 'path x)))))
+                                          (cdr
+                                           (assoc 'tree
+                                                  (straight-extra-read-json)))))))
+                               (readme (car (straight-extra-sort-readme
+                                             paths))))
+                     (straight-extra-fetch-repo-path repo readme)))))))))))
+
 (defun straight-extra-get-url (package-name &optional recipe)
-  "Convert PACKAGE-NAME with RECIPE to url."
+  "Retrieve the URL for a given PACKAGE-NAME and optional RECIPE.
+
+Argument PACKAGE-NAME is a string or symbol representing the name of the
+package.
+
+Optional argument RECIPE is a plist describing the package."
   (setq package-name (if (stringp package-name)
                          (intern (car (split-string package-name)))
                        package-name))
@@ -2647,11 +3057,81 @@ With prefix argument ARG force to refetch archives."
              (when repo (format "%s" repo)))))
       url)))
 
-(defun straight-extra-buffers-in-mode (modes &optional buffer-list derived-p)
-  "Return a list of BUFFER-LIST with `major-mode' listed in MODES.
-MODES can be either list of modes, or a mode.
+(defun straight-extra-browse-action (package-name)
+  "Open repository's README or guide in a browser.
 
-If DERIVED-P is non-nil, test with `derived-mode-p', otherwise use `eq'."
+Argument PACKAGE-NAME is a string or symbol representing the name of the package
+to browse."
+  (setq package-name (if (stringp package-name)
+                         (intern (car (split-string package-name)))
+                       package-name))
+  (straight--with-plist (straight--convert-recipe package-name)
+      (host repo)
+    (pcase host
+      ('github
+       (url-retrieve
+        (format
+         "https://api.github.com/repos/%s/git/trees/HEAD:?recursive=1"
+         repo)
+        (lambda (arg)
+          (cond ((equal :error (car arg))
+                 (message arg))
+                (t
+                 (when
+                     (let ((minibuffer-item (straight-extra-minibuffer-item)))
+                       (or (not minibuffer-item)
+                           (equal (format "%s" package-name) minibuffer-item)))
+                   (with-current-buffer (current-buffer)
+                     (goto-char (point-min))
+                     (re-search-forward "^$")
+                     (delete-region (+ 1 (point))
+                                    (point-min))
+                     (goto-char (point-min))
+                     (when-let* ((paths
+                                  (seq-filter
+                                   (apply-partially #'string-match-p
+                                                    "readme\\|manual\\|guide")
+                                   (remove nil
+                                           (mapcar
+                                            (lambda (x)
+                                              (pcase (cdr (assq 'type x))
+                                                ("blob" (cdr (assq 'path x)))))
+                                            (cdr
+                                             (assoc 'tree
+                                                    (straight-extra-read-json)))))))
+                                 (readme (car (straight-extra-sort-readme
+                                               paths))))
+                       (straight-extra-fetch-repo-path repo readme)))))))))
+      ('sourcehut (setq repo (concat "~" repo)))
+      (_
+       (let ((url
+              (progn
+                (when (eq host 'sourcehut)
+                  (setq repo (concat "~" repo)))
+                (let ((url
+                       (if-let ((domain (car (alist-get host
+                                                        straight-hosts))))
+                           (format "https://%s/%s" domain repo)
+                         (when repo (format "%s" repo)))))
+                  url))))
+         (if (active-minibuffer-window)
+             (with-selected-window (selected-window)
+               (straight-extra-browse-xwidget-in-other-window
+                #'straight-extra-browse-url url))
+           (straight-extra-browse-xwidget-in-other-window
+            #'straight-extra-browse-url url)))))))
+
+(defun straight-extra-buffers-in-mode (modes &optional buffer-list derived-p)
+  "Filter buffers by mode(s), optionally including derived modes.
+
+Argument MODES is a list of major modes or a single major mode to match buffers
+against.
+
+Optional argument BUFFER-LIST is a list of buffers to search; if nil, all
+buffers are considered.
+
+Optional argument DERIVED-P is a boolean; if non-nil, matches buffers whose
+major mode is derived from any of the MODES in MODES."
   (unless (proper-list-p modes)
     (setq modes (list modes)))
   (seq-filter (if derived-p
@@ -2664,14 +3144,19 @@ If DERIVED-P is non-nil, test with `derived-mode-p', otherwise use `eq'."
               (or buffer-list (buffer-list))))
 
 (defun straight-extra-browse-url-no-select (url)
-  "Browse URL with xwidget in other window."
+  "Open URL in other window without selecting it.
+
+Argument URL is the web address to be opened."
   (with-selected-window (selected-window)
     (straight-extra-browse-xwidget-in-other-window
      #'straight-extra-browse-url url)))
 
 (defun straight-extra-browse-xwidget-in-other-window (&optional fn &rest args)
-  "Apply FN with ARGS in left or right window.
-If windows doesn't exists, split current window."
+  "Open webkit buffer in another window.
+
+Optional argument FN is a function to be called in the other window.
+
+Remaining arguments ARGS are the arguments passed to the function FN."
   (select-window
    (if-let ((xwidget-buff
              (car
@@ -2720,12 +3205,14 @@ If windows doesn't exists, split current window."
   (when fn (apply fn args)))
 
 (defun straight-extra-browse-url (url)
-  "Try to browse URL with `eaf-open-browser', `xwidget' or `eww'."
+  "Open URL using the appropriate browser method.
+
+Argument URL is the web address to open in a browser."
   (cond ((not (display-graphic-p))
          (browse-url url))
         ((fboundp 'eaf-open-browser)
          (eaf-open-browser url))
-        ((featurep 'xwidget-internal)
+        ((and straight-extra-use-xwidgets (featurep 'xwidget-internal))
          (require 'xwidget)
          (let ((xwidget-webkit-last-session-buffer
                 (car (straight-extra-buffers-in-mode
@@ -2740,19 +3227,9 @@ If windows doesn't exists, split current window."
         (t
          (browse-url url))))
 
-(defun straight-extra-browse-action (package-name)
-  "Browse PACKAGE-NAME with xwidget."
-  (when-let ((url (concat (straight-extra-get-url package-name) "#readme")))
-    (if (active-minibuffer-window)
-        (with-selected-window (selected-window)
-          (straight-extra-browse-xwidget-in-other-window
-           #'straight-extra-browse-url url))
-      (straight-extra-browse-xwidget-in-other-window
-       #'straight-extra-browse-url url))))
-
 ;;;###autoload
 (defun straight-extra-repo-status ()
-  "Preview file without exiting minibuffer."
+  "Display Git status or diffs for a selected repository."
   (interactive)
   (when-let* ((input
                (if (and (eq completing-read-function
@@ -2778,9 +3255,26 @@ If windows doesn't exists, split current window."
                                                    require-match initial-input
                                                    hist def
                                                    inherit-input-method)
-  "Read file name, prompting with PROMPT and completing with FILES.
-PREDICATE, REQUIRE-MATCH, INITIAL-INPUT, HIST, DEF, INHERIT-INPUT-METHOD
-are the same as for `completing-read'."
+  "PROMPT for a file with completion and optional repo status action.
+
+Argument PROMPT is a string to display as the prompt in the minibuffer.
+
+Argument FILES is a collection of file names to choose from.
+
+Optional argument PREDICATE is a function to filter the files.
+
+Optional argument REQUIRE-MATCH determines whether input must exactly match one
+of the files.
+
+Optional argument INITIAL-INPUT is a string to prefill the minibuffer with.
+
+Optional argument HIST is the history list to use for the input.
+
+Optional argument DEF is the default value to return if the user enters an empty
+string.
+
+Optional argument INHERIT-INPUT-METHOD specifies whether to inherit the current
+input method."
   (sit-for 0.5)
   (minibuffer-with-setup-hook
       (lambda ()
@@ -2798,9 +3292,10 @@ are the same as for `completing-read'."
 
 ;;;###autoload
 (defun straight-extra-jump-to-uncommited-repo (&optional confirm-dir)
-  "Open modified repositiory in straight repos dir.
-With optional argument CONFIRM-DIR ask about directory, othervise use straight
-repositories."
+  "Jump to a modified git repository.
+
+Optional argument CONFIRM-DIR is a prefix argument; if non-nil, prompts the user
+to confirm the directory."
   (interactive "P")
   (require 'magit nil t)
   (require 'git-util nil t)
@@ -2819,7 +3314,7 @@ repositories."
       (find-file file))))
 
 (defun straight-extra-use-package-at-point-p ()
-  "Return non nil at the beginning of `use-package' form."
+  "Check if point is on a `use-package' form."
   (when-let ((sexp (straight-extra-sexp-at-point)))
     (and
      (car-safe sexp)
@@ -2830,7 +3325,7 @@ repositories."
      (cadr sexp))))
 
 (defun straight-extra-inside-use-package-p ()
-  "Return non nil inside `use-package' form."
+  "Check if point is inside a `use-package' form."
   (with-syntax-table emacs-lisp-mode-syntax-table
     (save-excursion
       (catch 'found
@@ -2839,7 +3334,7 @@ repositories."
             (throw 'found (point))))))))
 
 (defun straight-extra-get-current-package-name ()
-  "Return package symbol if point is inside `use-package' form."
+  "Extract the current package name at point."
   (when-let ((beg (straight-extra-inside-use-package-p)))
     (save-excursion
       (goto-char beg)
@@ -2848,7 +3343,7 @@ repositories."
       (symbol-at-point))))
 
 (defun straight-extra-get-use-package-bounds ()
-  "Return bounds of parent `use-package' form."
+  "Find bounds of the current `use-package' form."
   (when-let ((start (straight-extra-inside-use-package-p)))
     (save-excursion
       (goto-char start)
@@ -2856,7 +3351,7 @@ repositories."
       (cons start (point)))))
 
 (defun straight-extra-get-use-package-keywords ()
-  "Jumpt to the end of KEYWORD is `use-package' form."
+  "Extract keywords from a `use-package' declaration."
   (pcase-let ((`(,beg . ,_end)
                (straight-extra-get-use-package-bounds)))
     (save-excursion
@@ -2865,7 +3360,10 @@ repositories."
         (ignore-errors (seq-filter #'keywordp (straight-extra-sexp-at-point)))))))
 
 (defun straight-extra-get-keyword-value (&optional keyword)
-  "Jumpt to the end of KEYWORD is `use-package' form."
+  "Extract value for KEYWORD in `use-package' declaration.
+
+Optional argument KEYWORD is the keyword to search for within the `use-package'
+declaration."
   (pcase-let ((`(,beg . ,_end)
                (straight-extra-get-use-package-bounds)))
     (when beg
@@ -2877,7 +3375,9 @@ repositories."
             (buffer-substring-no-properties beg end)))))))
 
 (defun straight-extra-get-keyword-value-sexps (&optional keyword)
-  "Jumpt to the end of KEYWORD is `use-package' form."
+  "Extract KEYWORD value sexps from a string.
+
+Optional argument KEYWORD is a keyword symbol for which to get the value sexps."
   (when-let ((str (straight-extra-get-keyword-value keyword)))
     (pcase keyword
       ((or :bind :bind*)
@@ -2901,7 +3401,9 @@ repositories."
       (_ (straight-extra-read-string str)))))
 
 (defun straight-extra-read-string (str)
-  "Read STR."
+  "Read and return a list of sexps from a string STR.
+
+Argument STR is a string from which to read Lisp expressions."
   (with-temp-buffer
     (erase-buffer)
     (save-excursion
@@ -2916,7 +3418,10 @@ repositories."
       (reverse sexps))))
 
 (defun straight-extra-keyword-end-pos (keyword)
-  "Jumpt to the end of KEYWORD in `use-package' form."
+  "Find the end position of a given KEYWORD in a sexp.
+
+Argument KEYWORD is a symbol representing the keyword to find the end position
+of within the `use-package' form."
   (pcase-let ((`(,beg . ,_end)
                (straight-extra-get-use-package-bounds)))
     (when beg
@@ -2934,7 +3439,7 @@ repositories."
             pos))))))
 
 (defun straight-extra-move-to--next-keyword ()
-  "Move point to the next keyword start on the same depth."
+  "Navigate to the next non-keyword sexp."
   (ignore-errors (while (keywordp (straight-extra-sexp-at-point))
                    (forward-sexp)))
   (let ((pos))
@@ -2948,7 +3453,10 @@ repositories."
       (point))))
 
 (defun straight-extra-copy-keyword-value (keyword)
-  "Copy KEYWORD value in `use-package' form."
+  "Copy value associated with KEYWORD to buffer.
+
+Argument KEYWORD is a symbol representing the keyword to search for in the
+buffer."
   (when (memq keyword (straight-extra-get-use-package-keywords))
     (goto-char (straight-extra-keyword-end-pos keyword))
     (let ((beg (point)))
@@ -2956,7 +3464,10 @@ repositories."
       (buffer-substring-no-properties beg (point)))))
 
 (defun straight-extra-jump-to-keyword (keyword)
-  "Jumpt to the end of KEYWORD is `use-package' form."
+  "Jump to the specified KEYWORD in a `use-package' declaration.
+
+Argument KEYWORD is the symbol to search for within the `use-package'
+declaration."
   (pcase-let ((`(,beg . ,_end)
                (straight-extra-get-use-package-bounds)))
     (when beg
@@ -2970,8 +3481,10 @@ repositories."
           (goto-char pos)
           pos)))))
 
-
 (defun straight-extra-package-installed-p (package)
+  "Check if PACKAGE is installed using `straight'.
+
+Argument PACKAGE is the name of the package to check for installation status."
   (ignore-errors
     (let* ((recipe
             (ignore-errors
@@ -2980,11 +3493,9 @@ repositories."
       (straight--installed-p recipe))))
 
 (defun straight-extra--package-annotation (recipes)
-  "Return an annotation function for RECIPES keys.
-See documentation of `straight-extra--package-completion' for a
-description of RECIPES.
-Each package is annotated with its installation status (installed
-or built-in) and its remote repository."
+  "Annotate PACKAGE with its type and remote URL.
+
+Argument RECIPES is a hash table mapping package names to their recipes."
   (let ((annotfmt
          (propertize
           (concat (propertize " " 'display '(space :align-to 40)) " %s"
@@ -3005,10 +3516,10 @@ or built-in) and its remote repository."
           ""))))
 
 (defun straight-extra-s-strip-props (item)
-  "If ITEM is string, return it without text properties.
+  "Remove text properties from ITEM if it's a string.
 
- If ITEM is symbol, return it is `symbol-name.'
- Otherwise return nil."
+Argument ITEM is the object from which text properties will be removed; it can
+be a string, a symbol, or nil."
   (cond ((stringp item)
          (let ((str (seq-copy item)))
            (set-text-properties 0 (length str) nil str)
@@ -3019,7 +3530,9 @@ or built-in) and its remote repository."
 
 ;;;;;; Annotation functions
 (defun straight-extra--annotate (package)
-  "Return annotation for PACKAGE."
+  "Annotate PACKAGE with its description and installation status.
+
+Argument PACKAGE is the name of the package to annotate."
   (setq package (straight-extra-s-strip-props package))
   (let ((annotfmt
          (propertize
@@ -3057,7 +3570,10 @@ or built-in) and its remote repository."
           ""))))
 
 (defun straight-extra--search-for-use-package-call (package)
-  "Search for PACKAGE config in current buffer."
+  "Search backward for a `use-package' call for PACKAGE.
+
+Argument PACKAGE is a string or symbol representing the package name to search
+for in `use-package' calls."
   (when (stringp package)
     (setq package (intern package)))
   (or (catch 'found
@@ -3080,9 +3596,9 @@ or built-in) and its remote repository."
               (throw 'found (point))))))))
 
 (defun straight-extra-scan-all-pass (filters)
-  "Create an unary predicate function from FILTERS.
-Return t if every one of the provided predicates is satisfied by provided
- argument."
+  "Apply FILTERS to ITEM, return nil if any filter fails.
+
+Argument FILTERS is a list of predicate functions to apply to each item."
   (lambda (item)
     (not (catch 'found
            (dolist (filter filters)
@@ -3090,9 +3606,13 @@ Return t if every one of the provided predicates is satisfied by provided
                (throw 'found t)))))))
 
 (defun straight-extra-scan-find-project-files (&optional directory no-filter)
-  "Return all elisp files from project instance in DIRECTORY.
-If optional argument NO-FILTER is non-nil, return all files, else
-return only elisp files."
+  "Scan and filter project files for existing `.el' files.
+
+Optional argument DIRECTORY is the directory from which to start searching for
+project files. If not provided, the current DIRECTORY is used.
+
+Optional argument NO-FILTER is a boolean that, when non-nil, disables filtering
+of the project files to only include those that exist."
   (let* ((project-find-functions '(project-try-vc try))
          (pr (project-current t directory))
          (dirs (list (project-root pr)))
@@ -3105,8 +3625,7 @@ return only elisp files."
                   files))))
 
 (defun straight-extra-scan-project ()
-  "Search for first `use-package' call with PACKAGE using `find' and `grep'.
-Return cons with a filename and point if found, or nil."
+  "Scan project files and parse items within them."
   (let* ((default-directory user-emacs-directory)
          (files (straight-extra-scan-find-project-files user-emacs-directory)))
     (let ((straight-extra--readed-files)
@@ -3119,8 +3638,7 @@ Return cons with a filename and point if found, or nil."
       syms)))
 
 (defun straight-extra-find-all-use-package-calls ()
-  "Search for first `use-package' call with PACKAGE using `find' and `grep'.
-Return cons with a filename and point if found, or nil."
+  "Find all `use-package' call in a project."
   (seq-filter (lambda (it)
                 (let ((type (plist-get (cdr it) :type)))
                   (memq type
@@ -3128,8 +3646,9 @@ Return cons with a filename and point if found, or nil."
               (straight-extra-scan-project)))
 
 (defun straight-extra-find-use-package (package)
-  "Search for first `use-package' call with PACKAGE using `find' and `grep'.
-Return cons with a filename and point if found, or nil."
+  "Find and return `use-package' call for PACKAGE.
+
+Argument PACKAGE is the name of the Emacs package as a string or a symbol."
   (let* ((default-directory user-emacs-directory)
          (files (split-string
                  (shell-command-to-string
@@ -3159,10 +3678,18 @@ Return cons with a filename and point if found, or nil."
             (setq found (cons file found))
             (setq files nil))))
       found)))
-(defvar straight-extra-found-use-packages nil)
+
+(defvar straight-extra-found-use-packages nil
+  "List of additional packages found during straight.el `use-package' integration.")
+
 (defun straight-extra-jump-to-installed-package (package &optional other-wind)
-  "Jump  to the first `use-package' call with PACKAGE using `find' and `grep'.
-If OTHER-WIND is non nil, find file in other window."
+  "Jump to PACKAGE's file and highlight its `use-package' declaration.
+
+Argument PACKAGE is the name of the package to jump to; it can be a string or a
+symbol.
+
+Optional argument OTHER-WIND is a boolean; when non-nil, the PACKAGE file is
+opened in another window."
   (unless straight-extra-found-use-packages
     (setq straight-extra-found-use-packages
           (straight-extra-find-all-use-package-calls)))
@@ -3180,8 +3707,12 @@ If OTHER-WIND is non nil, find file in other window."
      (plist-get pl :end))))
 
 (defun straight-extra--package-completion (hash &optional collection)
-  "Return a  package name completion COLLECTION function.
-HASH must be a hash table mapping package name strings to recipes."
+  "Provide completion for package names from a HASH table.
+
+Argument HASH is a hash table from which keys are extracted for completion.
+
+Optional argument COLLECTION is a collection of items that overrides the default
+extracted from HASH."
   (let* ((recipes
           (reverse
            (mapcar #'straight-extra-s-strip-props (copy-tree (hash-table-keys
@@ -3189,7 +3720,7 @@ HASH must be a hash table mapping package name strings to recipes."
                                                                hash))))))
          (annotfn 'straight-extra--annotate)
          (metadata `(metadata (category . straight-recipe)
-                              (annotation-function . ,annotfn))))
+                     (annotation-function . ,annotfn))))
     (lambda (string pred action)
       (if (eq action 'metadata)
           metadata
@@ -3197,7 +3728,7 @@ HASH must be a hash table mapping package name strings to recipes."
          action (or collection recipes) string pred)))))
 
 (defun straight-extra-minibuffer-item ()
-  "Return current minibuffer selection."
+  "Retrieve current minibuffer content or Ivy selection."
   (when (minibufferp)
     (if
         (and
@@ -3215,10 +3746,8 @@ HASH must be a hash table mapping package name strings to recipes."
         (car (split-string
               (minibuffer-contents-no-properties)))))))
 
-
-
 (defun straight-extra-preview-installed-location ()
-  "Find `use-package' call with current minibuffer candidate."
+  "Display the installation location of a selected package."
   (interactive)
   (when-let ((package (if (derived-mode-p
                            'straight-extra-table-report-mode)
@@ -3229,7 +3758,7 @@ HASH must be a hash table mapping package name strings to recipes."
        package))))
 
 (defun straight-extra-jump-to-config-other-window ()
-  "Jump to selected in minibuffer package config in other window."
+  "Open package config in another window."
   (interactive)
   (when-let ((package (straight-extra-minibuffer-item)))
     (let* ((wind (minibuffer-selected-window))
@@ -3253,12 +3782,14 @@ HASH must be a hash table mapping package name strings to recipes."
                 (kbd "C-j") #'straight-extra-installed-package-preview-command)
     (define-key map
                 (kbd "C-c C-o") #'straight-extra-jump-to-config-other-window)
-    map))
+    map)
+  "Keymap for extra package management commands.")
 
+(defvar straight-extra-preview-action nil
+  "Action to run after previewing with straight.el.")
 
-(defvar straight-extra-preview-action nil)
 (defun straight-extra-installed-package-preview-command ()
-  "Invoke `straight-extra-preview-action' or preview an installed package."
+  "Preview installed package details."
   (interactive)
   (when-let ((package
               (straight-extra-minibuffer-item)))
@@ -3268,12 +3799,20 @@ HASH must be a hash table mapping package name strings to recipes."
            #'straight-extra-jump-to-installed-package)
        package))))
 
-(defvar straight-extra-installed-packages-history nil)
+(defvar straight-extra-installed-packages-history nil
+  "List tracking additional package installation history.")
+
 (defun straight-extra-read-installed-package (&optional preview-action predicate
                                                         initial-input)
-  "Read package from `straight--recipe-cache' with INITIAL-INPUT and PREDICATE.
-PREVIEW-ACTION should be a function that accept one argument - current
-minibuffer candidate. It will be called in window called before minibuffer."
+  "Prompt for an installed package with completion.
+
+Optional argument PREVIEW-ACTION is a function to call with the selected package
+name.
+
+Optional argument PREDICATE is a function to filter the package candidates.
+
+Optional argument INITIAL-INPUT is the initial input provided to the minibuffer,
+which can be a symbol or string."
   (when (and initial-input (symbolp initial-input))
     (setq initial-input (symbol-name initial-input)))
   (setq straight-extra-found-use-packages
@@ -3300,12 +3839,10 @@ minibuffer candidate. It will be called in window called before minibuffer."
 
 ;;;###autoload
 (defun straight-extra-jump-to-package-readme (package)
-  "Use `completing-read' to select a PACKAGE.
-MESSAGE is displayed as the prompt; it should not end in punctuation
-or whitespace.
+  "Jump to a PACKAGE's README file.
 
-FILTER is a function accepting one argument: a straight style recipe plist.
-If it returns nil, the package is not considered a selection candidate."
+Argument PACKAGE is the name of the package for which to find and display the
+README file."
   (interactive (list (straight-extra-read-installed-package
                       'straight-extra-find-file-readme
                       nil
@@ -3314,12 +3851,10 @@ If it returns nil, the package is not considered a selection candidate."
 
 ;;;###autoload
 (defun straight-extra-jump-to-package-config (package)
-  "Use `completing-read' to select a PACKAGE with CALLBACK.
-MESSAGE is displayed as the prompt; it should not end in punctuation
-or whitespace.
+  "Jump to a PACKAGE's configuration.
 
-FILTER is a function accepting one argument: a straight style recipe plist.
-If it returns nil, the package is not considered a selection candidate."
+Argument PACKAGE is a symbol representing the package to jump to its
+configuration."
   (interactive
    (list
     (straight-extra-read-installed-package
@@ -3332,28 +3867,21 @@ If it returns nil, the package is not considered a selection candidate."
     t))
 
 (defun straight-extra-current-recipe ()
-  "Return recipe for inside `use-package'."
+  "Retrieve recipe for current package from cache."
   (when-let ((package (straight-extra-get-current-package-name)))
     (ignore-errors (gethash (symbol-name package) straight--recipe-cache))))
 
-
-
 (defvar straight-extra-keywords-inserters-alist
-  '((:bind .
-           straight-extra-insert-bind)
-    (:bind* .
-            straight-extra-insert-bind*)
-    (:config .
-             straight-extra-insert-config-keyword)
+  '((:bind . straight-extra-insert-bind)
+    (:bind* . straight-extra-insert-bind*)
+    (:config . straight-extra-insert-config-keyword)
     (:custom . straight-extra-insert-customs)
-    (:straight . straight-extra-insert-straight-keyword)))
-
-
-
+    (:straight . straight-extra-insert-straight-keyword))
+  "Alist mapping keywords to functions for inserting package configurations.")
 
 ;;;###autoload (autoload 'straight-extra-configure-package-menu "straight-extra" nil t)
 (transient-define-prefix straight-extra-configure-package-menu ()
-  "Configure package at point."
+  "Display menu to configure an Emacs package."
   [:description
    (lambda ()
      (format "Configure %s"
@@ -3374,7 +3902,7 @@ If it returns nil, the package is not considered a selection candidate."
 
 ;;;###autoload (autoload 'straight-extra-straight-only-menu "straight-extra" nil t)
 (transient-define-prefix straight-extra-straight-only-menu ()
-  "Command dispatcher for straight."
+  "Display a menu for package management operations."
   [["Check"
     ("C" "all" straight-check-all)
     ("c" "package" straight-check-package)]
@@ -3405,7 +3933,7 @@ If it returns nil, the package is not considered a selection candidate."
 
 ;;;###autoload (autoload 'straight-extra-transient-menu "straight-extra" nil t)
 (transient-define-prefix straight-extra-transient-menu ()
-  "Command dispatcher for straight."
+  "Display a menu for package management tasks."
   [["Explore"
     ("s" "use" straight-extra-install-package)
     ("d" "Jump to installed package readme"
