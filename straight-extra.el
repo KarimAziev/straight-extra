@@ -487,19 +487,19 @@ the result."
                     (setq props (plist-put props :args args))
                     (when (and (assq type
                                      straight-extra--interactive-types)
-                               (eq 'interactive
-                                   (if doc
-                                       (cadr
-                                        (member
-                                         doc
-                                         item))
-                                     (car-safe
-                                      (nth
-                                       (cdr
-                                        (assq
-                                         type
-                                         straight-extra--interactive-types))
-                                       item)))))
+                               (ignore-errors (eq 'interactive
+                                                  (if doc
+                                                      (caadr
+                                                       (member
+                                                        doc
+                                                        item))
+                                                    (car-safe
+                                                     (nth
+                                                      (cdr
+                                                       (assq
+                                                        type
+                                                        straight-extra--interactive-types))
+                                                      item))))))
                       (setq props (plist-put props :interactive t)))))
                  ((guard (assq type straight-extra--custom-types))
                   (setq props (plist-put props :value (nth 2 item))))
@@ -2193,6 +2193,9 @@ LIBRARY name."
       (?o
        (insert "(use-package " (read-string "Package:\s")" )")))))
 
+
+
+
 (defvar straight-extra-last-written-file nil
   "Path of the most recently written file by straight.el.")
 
@@ -2728,18 +2731,30 @@ columns for package name, description, year, load count, and keywords."
           ("Description" 50 nil)
           ("Year" 5 number)
           ("Loads" 10 number)
-          ("Keywords" 10)]))
+          ("Keywords" 10)
+          ("Deps" 10)]))
   (tabulated-list-init-header))
+
 
 (defun straight-extra-map-entries-alist ()
   "Map package entries to a result list."
-  (let ((result))
+  (let ((result)
+        (preview-action  (or
+                          (when
+                              (require 'gh-repo nil t)
+                            (and (fboundp 'gh-repo-tree)
+                                 #'gh-repo-tree))
+                          #'straight-extra-browse-url-no-select)))
     (pcase-dolist (`(,id . ,cell) straight-extra-melpa-packages-archive-alist)
       (let ((name (symbol-name id))
             (props (cdr (assq 'props cell))))
         (let ((downloads
                (or (cdr (assq 'downloads cell)) 0))
               (desc (or (cdr (assq 'desc cell)) ""))
+              (deps (mapconcat #'symbol-name
+                               (remove 'emacs
+                                       (mapcar #'car (cdr (assq 'deps cell))))
+                               " "))
               (url (cdr (assq 'url props)))
               (ver (substring-no-properties (string-join
                                              (mapcar
@@ -2771,14 +2786,15 @@ columns for package name, description, year, load count, and keywords."
                                         'follow-link t
                                         'button-data url
                                         'action
-                                        #'straight-extra-browse-url-no-select)))
+                                        preview-action)))
                                desc
                                ver
                                (if downloads
                                    (number-to-string
                                     downloads)
                                  "0")
-                               keywords))))
+                               keywords
+                               deps))))
                 result))))
     result))
 
@@ -3204,6 +3220,100 @@ Remaining arguments ARGS are the arguments passed to the function FN."
        other-wind)))
   (when fn (apply fn args)))
 
+(defmacro straight-extra--with-other-window (&rest body)
+  "Execute BODY in other window.
+If other window doesn't exists, split selected window right."
+  `(with-selected-window
+       (let ((wind-target
+              (if (minibuffer-window-active-p (selected-window))
+                  (with-minibuffer-selected-window
+                    (let ((wind (selected-window)))
+                     (or
+                      (window-right wind)
+                      (window-left wind)
+                      (progn (split-window-sensibly) wind))))
+                (let ((wind (selected-window)))
+                 (or
+                  (window-right wind)
+                  (window-left wind)
+                  (progn (split-window-sensibly) wind))))))
+        wind-target)
+     (progn ,@body)))
+
+
+(defun straight-extra-gh-view-readme (url)
+  "Display a GitHub repository's README in a buffer.
+Argument URL is the GitHub repository url as a string."
+  (require 'url-parse)
+  (let* ((urlobj (url-generic-parse-url url))
+         (host
+          (when (fboundp 'url-host)
+            (url-host urlobj)))
+         (file
+          (when (fboundp 'url-filename)
+            (url-filename urlobj))))
+    (if (and host file (equal host "github.com"))
+        (let ((repo (replace-regexp-in-string "^/" "" file))
+              (buffer (get-buffer "*straight-extra-gh-repo*")))
+          (when buffer
+            (kill-buffer buffer))
+          (setq buffer (get-buffer-create "*straight-extra-gh-repo*"))
+          (with-current-buffer buffer
+            (pop-to-buffer-same-window (current-buffer))
+            (setq buffer-read-only nil)
+            (erase-buffer)
+            ;; Asynchronous process
+            (let ((process-environment
+                   (append process-environment '("PAGER=cat"
+                                                 "TERM=dumb"
+                                                 "NO_COLOR=1"))))
+              (make-process
+               :name "gh-repo-view"
+               :buffer buffer
+               :command `("gh" "repo" "view" ,repo)
+               :sentinel
+               (lambda (proc _event)
+                 (when (eq (process-status proc) 'exit)
+                   (with-current-buffer (process-buffer proc)
+                     (goto-char (point-min))
+                     (when-let ((wnd (and (buffer-live-p buffer)
+                                          (get-buffer-window buffer))))
+                       (set-window-point wnd (point-min)))
+                     (if (save-excursion
+                           (re-search-forward "^#\\+[a-z]" nil t 1))
+                         (org-mode)
+                       (require 'markdown-mode)
+                       (when (fboundp 'gfm-view-mode)
+                         (gfm-view-mode))))))))))
+      (eww-browse-url url))))
+
+;; (defun straight-extra-gh-view-readme (url)
+;;   "Display a GitHub repository's README in a buffer.
+
+;; Argument URL is the GitHub repository url as a string."
+;;   (let* ((urlobj (url-generic-parse-url
+;;                   url))
+;;          (host (url-host urlobj))
+;;          (file (url-filename urlobj)))
+;;     (when (and host
+;;                file
+;;                (equal host "github.com"))
+;;       (let ((repo (replace-regexp-in-string "^/" "" file)))
+;;         (with-current-buffer (get-buffer-create "*straight-extra-gh-repo*")
+;;           (pop-to-buffer-same-window (current-buffer))
+;;           (setq buffer-read-only t)
+;;           (let ((inhibit-read-only t))
+;;             (erase-buffer)
+;;             (shell-command
+;;              (concat "gh repo view " repo)
+;;              (current-buffer)
+;;              (current-buffer)))
+;;           (if (save-excursion
+;;                 (re-search-forward "^#\\+[a-z]" nil t 1))
+;;               (org-mode)
+;;             (gfm-view-mode))
+;;           (pop-to-buffer-same-window (current-buffer)))))))
+
 (defun straight-extra-browse-url (url)
   "Open URL using the appropriate browser method.
 
@@ -3225,7 +3335,7 @@ Argument URL is the web address to open in a browser."
                   (xwidget-webkit-browse-url
                    url)))))
         (t
-         (browse-url url))))
+         (straight-extra-gh-view-readme url))))
 
 ;;;###autoload
 (defun straight-extra-repo-status ()
@@ -3746,16 +3856,22 @@ extracted from HASH."
         (car (split-string
               (minibuffer-contents-no-properties)))))))
 
-(defun straight-extra-preview-installed-location ()
-  "Display the installation location of a selected package."
-  (interactive)
-  (when-let ((package (if (derived-mode-p
+(defun straight-extra-preview-installed-location (package)
+  "Jump to the installed location of PACKAGE.
+
+Argument PACKAGE is the name of the package to jump to; it can be a string or a
+symbol."
+  (interactive (list  (if (derived-mode-p
                            'straight-extra-table-report-mode)
                           (tabulated-list-get-id)
                         (straight-extra-minibuffer-item))))
-    (with-minibuffer-selected-window
-      (straight-extra-jump-to-installed-package
-       package))))
+  (if (active-minibuffer-window)
+      (with-minibuffer-selected-window
+        (straight-extra-jump-to-installed-package
+         package))
+    (straight-extra-jump-to-installed-package
+     package
+     t)))
 
 (defun straight-extra-jump-to-config-other-window ()
   "Open package config in another window."
@@ -3887,6 +4003,8 @@ configuration."
      (format "Configure %s"
              (straight-extra-get-current-package-name)))
    [("m" ":bind Insert keymap" straight-extra-insert-keymap)
+    ("o" ":config" straight-extra-insert-config-keyword)
+    ("s" ":straight" straight-extra-insert-straight-keyword)
     ("c" ":custom Customize" straight-extra-insert-customs)
     ("k" "Other keyword"
      straight-extra-jump-or-insert-to-use-package-keyword)
