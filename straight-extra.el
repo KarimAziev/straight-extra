@@ -31,7 +31,7 @@
 ;;; Code:
 
 (require 'project)
-
+(require 'transient)
 (declare-function find-library-suffixes "find-func")
 (declare-function find-library-name "find-func")
 
