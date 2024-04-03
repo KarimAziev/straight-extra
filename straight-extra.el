@@ -2210,9 +2210,11 @@ configuration for the installed package. If `no-write', no file is written.
 
 Optional argument INSERT-POS is a buffer position where the `use-package'
 declaration should be inserted. If nil, it is inserted at the end of the buffer."
-  (interactive (list (or (and (derived-mode-p 'straight-extra-table-report-mode)
-                              (tabulated-list-get-id))
-                         (straight-extra-read-package))))
+  (interactive (list
+                (or
+                 (and (derived-mode-p 'straight-extra-table-report-mode)
+                      (tabulated-list-get-id))
+                 (straight-extra-read-package current-prefix-arg))))
   (let ((symb (intern package))
         (installed (straight-extra-package-installed-p package)))
     (condition-case nil
@@ -2314,6 +2316,7 @@ declaration should be inserted. If nil, it is inserted at the end of the buffer.
             (pop-to-buffer-same-window (current-buffer))))
         (with-selected-window (selected-window)
           (straight-extra-find-readme-other-window-for-current package))))))
+
 
 (defun straight-extra-serialize (data filename)
   "Save DATA to FILENAME, creating directory if needed.
@@ -2591,6 +2594,8 @@ the MELPA package archive alist, ignoring any cached data."
                                  straight-extra-melpa-cache-filename))))
          straight-extra-melpa-packages-archive-alist)
         (t
+         (message "pulling straight recipes")
+         (straight-pull-recipe-repositories)
          (message "loading archives")
          (let ((data (straight-extra-fetch-json
                       "https://melpa.org/archive.json"))
