@@ -4015,7 +4015,7 @@ configuration."
      straight-extra-jump-or-insert-to-use-package-keyword)
     ("d" "Readme"
      straight-extra-jump-to-package-readme)]
-   [("o" "Other package"
+   [("O" "Other package"
      straight-extra-transient-menu)]]
   (interactive)
   (if (straight-extra-get-current-package-name)
