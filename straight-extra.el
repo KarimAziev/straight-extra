@@ -464,6 +464,17 @@ the result."
                (append
                 data
                 (list v)))))
+          ((or 'define-minor-mode 'define-derived-mode
+               'define-globalized-minor-mode)
+           (when-let ((sym (and
+                            (cadr item)
+                            (symbolp (cadr item))
+                            (cadr item))))
+             (let ((doc (straight-extra--get-doc-from-sexp item)))
+               (cons sym (append (list
+                                  :type type
+                                  :doc doc)
+                                 extra-props)))))
           (_
            (let* ((doc (straight-extra--get-doc-from-sexp item))
                   (sym
@@ -1557,6 +1568,7 @@ a keymap symbol and its associated commands."
     (down-list)
     (forward-char 1))
   (message "Type z to repeat"))
+
 
 (defun straight-extra-read-custom-variables ()
   "Prompt for custom variable selection with annotations."
