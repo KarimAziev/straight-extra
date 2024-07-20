@@ -32,6 +32,8 @@
 
 (require 'project)
 (require 'transient)
+(declare-function url-host "url-parse")
+(declare-function url-filename "url-parse")
 (declare-function find-library-suffixes "find-func")
 (declare-function find-library-name "find-func")
 
@@ -3987,6 +3989,83 @@ configuration."
     (forward-char 1)
     t))
 
+;;;###autoload
+(defun straight-extra-pull-and-rebuild-package (package)
+  "Pull and rebuild the specified PACKAGE.
+
+Argument PACKAGE is the name of the package to pull and rebuild."
+  (interactive (list (straight-extra-read-installed-package
+                      'straight-extra-jump-to-installed-package
+                      (lambda (it)
+                        (not
+                         (member it
+                                 (mapcar
+                                  #'symbol-name
+                                  straight-recipe-repositories))))
+                      (straight-extra--current-package-from-repo))))
+  (straight-pull-package package)
+  (straight-rebuild-package package))
+
+
+
+(defun straight-extra--current-package-from-repo ()
+  "Return the current package name from the repository's remote URL."
+  (require 'url-parse)
+  (let ((remotes (with-temp-buffer
+                   (let ((status (ignore-errors (call-process "git" nil t
+                                                              nil
+                                                              "remote"
+                                                              "show"))))
+                     (when (zerop status)
+                       (split-string (buffer-string) "\n" t))))))
+    (catch 'found
+      (while remotes
+        (let ((remote (car remotes)))
+          (when-let ((url (with-temp-buffer
+                            (let
+                                ((status (ignore-errors (call-process "git" nil
+                                                                      t
+                                                                      nil
+                                                                      "remote"
+                                                                      "get-url"
+                                                                      remote))))
+                              (when (zerop status)
+                                (string-trim (buffer-string) "\n"))))))
+            (setq url (with-temp-buffer
+                        (save-excursion
+                          (insert url))
+                        (when (re-search-forward "@" nil t 1)
+                          (when-let* ((beg (point))
+                                      (end (re-search-forward ":" nil t 1)))
+                            (string-trim
+                             (concat "https://"
+                                     (buffer-substring-no-properties
+                                      beg (1- end))
+                                     "/"
+                                     (buffer-substring-no-properties
+                                      end (point-max))))))))
+            (let*
+                ((urlobj (url-generic-parse-url url))
+                 (host (url-host urlobj))
+                 (hostbase (file-name-base host))
+                 (filename (replace-regexp-in-string
+                            "\\.git$"
+                            ""
+                            (substring-no-properties (url-filename urlobj) 1))))
+              (maphash
+               (lambda (_key value)
+                 (let ((repo (plist-get value :repo))
+                       (host-sym (plist-get value :host))
+                       (package (plist-get value :package)))
+                   (when (and (or (equal url repo)
+                                  (and
+                                   (equal repo filename)
+                                   (equal (format "%s" host-sym)
+                                          hostbase))))
+                     (throw 'found package))))
+               straight--recipe-cache))))
+        (setq remotes (cdr remotes))))))
+
 (defun straight-extra-current-recipe ()
   "Retrieve recipe for current package from cache."
   (when-let ((package (straight-extra-get-current-package-name)))
@@ -4038,7 +4117,8 @@ configuration."
     ("f" "package" straight-fetch-package)]
    ["Pull"
     ("A" "all" straight-pull-all)
-    ("P" "package" straight-pull-package)]]
+    ("P" "package" straight-pull-package)
+    ("p" "pull and rebuild" straight-extra-pull-and-rebuild-package)]]
   [["Merge"
     ("M" "all" straight-merge-all)
     ("m" "package" straight-merge-package)]
