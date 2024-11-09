@@ -188,7 +188,7 @@ Argument SYM is a symbol representing the library to find.
 
 Argument DIR is a string specifying the directory to search for the library."
   (require 'find-func)
-  (when-let ((file (ignore-errors
+  (when-let* ((file (ignore-errors
                      (file-truename (find-library-name (symbol-name sym))))))
     (when (file-in-directory-p file dir)
       file)))
@@ -420,7 +420,7 @@ the result."
                              (t key)))
                       extra-props))))))
           ('require
-           (when-let ((sym
+           (when-let* ((sym
                        (pcase item
                          (`(require ,(and name
                                       (guard (listp name))
@@ -438,7 +438,7 @@ the result."
                             ,(and optional
                               (guard (not (eq optional nil)))))
                           (straight-extra--unquote name)))))
-             (if-let ((file (straight-extra--find-lib-in-dir
+             (if-let* ((file (straight-extra--find-lib-in-dir
                              sym
                              default-directory)))
                  (append (list (cons sym (append extra-props
@@ -448,7 +448,7 @@ the result."
                 (list (cons sym (append extra-props
                                         (list :type type))))))))
           ((or 'use-package 'use-package!)
-           (when-let ((sym (and
+           (when-let* ((sym (and
                             (cadr item)
                             (symbolp (cadr item))
                             (cadr item))))
@@ -466,7 +466,7 @@ the result."
                 (list v)))))
           ((or 'define-minor-mode 'define-derived-mode
                'define-globalized-minor-mode)
-           (when-let ((sym (and
+           (when-let* ((sym (and
                             (cadr item)
                             (symbolp (cadr item))
                             (cadr item))))
@@ -536,7 +536,7 @@ the result."
                                                           (listp (car vals)))
                                                  (seq-find
                                                   (lambda (it)
-                                                    (when-let ((val (and
+                                                    (when-let* ((val (and
                                                                      (listp
                                                                       (cdr
                                                                        it))
@@ -556,7 +556,7 @@ the result."
                   (setq sym (straight-extra--unquote sym)))
                  ((or 'put 'add-hook
                       'advice-add)
-                  (when-let ((hook
+                  (when-let* ((hook
                               (straight-extra--unquote
                                (nth 1
                                     item))))
@@ -779,7 +779,7 @@ form."
     (when (and (listp vals)
                (listp (car vals)))
       (seq-find (lambda (it)
-                  (when-let ((val (and (listp (cdr it))
+                  (when-let* ((val (and (listp (cdr it))
                                        (listp (cadr it))
                                        (cadr it))))
                     (and
@@ -797,7 +797,7 @@ form."
   "Check if SYM's value is a keymap.
 
 Argument SYM is a symbol whose value is checked to determine if it is a keymap."
-  (when-let ((val
+  (when-let* ((val
               (when (boundp sym)
                 (symbol-value sym))))
     (keymapp val)))
@@ -1009,7 +1009,7 @@ included in the output."
     (delq nil
           (mapcar (lambda (it)
                     (when (listp it)
-                      (when-let ((key-descr
+                      (when-let* ((key-descr
                                   (straight-extra-key-description (car
                                                                    it)))
                                  (value (if (listp (cdr it))
@@ -1035,7 +1035,7 @@ Argument KEYMAP is the keymap to be formatted into an alist.
 Optional argument SYMB-PREFIX is a symbol or string used as a prefix to filter
 KEYMAP entries."
   (when (keymapp keymap)
-    (if-let ((name
+    (if-let* ((name
               (when symb-prefix
                 (car
                  (split-string (if (symbolp symb-prefix)
@@ -1076,7 +1076,7 @@ buffer with Emacs Lisp mode enabled."
                      (nth 1 sexp))))
               (name (symbol-name id)))
     (let ((doc
-           (when-let ((pos (cdr
+           (when-let* ((pos (cdr
                             (assq type
                                   straight-extra--docstring-positions))))
              (nth pos sexp)))
@@ -1102,7 +1102,7 @@ buffer with Emacs Lisp mode enabled."
 
 (defun straight-extra-scan-get-buffer-maps ()
   "Extract keymaps from buffer data and return them as pairs."
-  (when-let ((maps (plist-get (straight-extra-scan-buffer) :keymap)))
+  (when-let* ((maps (plist-get (straight-extra-scan-buffer) :keymap)))
     (delq nil (mapcar (lambda (it)
                         (when-let* ((sym (intern (car it)))
                                     (val (symbol-value sym)))
@@ -1116,10 +1116,10 @@ buffer with Emacs Lisp mode enabled."
     (let ((pl '()))
       (goto-char (point-max))
       (while (straight-extra-backward-list)
-        (when-let ((sexp (straight-extra--parse-list-at-point)))
+        (when-let* ((sexp (straight-extra--parse-list-at-point)))
           (let ((keyword (intern (concat ":" (symbol-name (car
                                                            (reverse sexp)))))))
-            (if-let ((group (plist-get pl keyword)))
+            (if-let* ((group (plist-get pl keyword)))
                 (setq pl (plist-put pl keyword (append group (list sexp))))
               (setq pl (plist-put pl keyword (list sexp)))))))
       pl)))
@@ -1168,7 +1168,7 @@ one."
   (pcase-let ((`(,beg . ,_end)
                (straight-extra-get-use-package-bounds)))
     (when beg
-      (when-let ((keyword-end
+      (when-let* ((keyword-end
                   (save-excursion
                     (let* ((existing
                             (straight-extra-get-use-package-keywords))
@@ -1482,7 +1482,7 @@ a keymap symbol and its associated commands."
                            (read
                             (current-buffer))))
                  (let ((value (ignore-errors (cadr sexp))))
-                   (when-let ((found (if
+                   (when-let* ((found (if
                                          (when (eq sexp :map)
                                            (forward-sexp 1)
                                            (eq (sexp-at-point) map-sym))
@@ -1573,7 +1573,7 @@ a keymap symbol and its associated commands."
 (defun straight-extra-read-custom-variables ()
   "Prompt for custom variable selection with annotations."
   (let* ((alist (cdr
-                 (when-let ((lib (straight-extra-get-current-package-name)))
+                 (when-let* ((lib (straight-extra-get-current-package-name)))
                    (append
                     (cdr
                      (assq :custom (straight-extra-get-library-items lib)))))))
@@ -1774,7 +1774,7 @@ a keymap symbol and its associated commands."
 
 (defun straight-extra-get-package-commands ()
   "Extract commands from the current package."
-  (when-let ((lib (straight-extra-get-current-package-name)))
+  (when-let* ((lib (straight-extra-get-current-package-name)))
     (pcase-let ((`(,beg . ,end)
                  (straight-extra-get-use-package-bounds)))
       (or
@@ -1787,7 +1787,7 @@ a keymap symbol and its associated commands."
 
 (defun straight-extra-get-package-keymaps ()
   "Extract keymaps from a package's `:bind' declarations."
-  (when-let ((lib (straight-extra-get-current-package-name)))
+  (when-let* ((lib (straight-extra-get-current-package-name)))
     (pcase-let ((`(,beg . ,end)
                  (straight-extra-get-use-package-bounds)))
       (or
@@ -1798,7 +1798,7 @@ a keymap symbol and its associated commands."
                               (straight-extra-get-library-items lib)))))
         (remove nil
                 (mapcar (lambda (it)
-                          (when-let ((val (straight-extra-format-keymap-to-alist
+                          (when-let* ((val (straight-extra-format-keymap-to-alist
                                            (symbol-value
                                             (car it)))))
                             (list (car it) val)))
@@ -1824,7 +1824,7 @@ keymap symbol and a list of keybindings."
     (setq maps (delq nil
                      (mapcar
                       (lambda (it)
-                        (when-let ((v
+                        (when-let* ((v
                                     (straight-extra-format-keymap-to-alist
                                      (cdr
                                       it)
@@ -1892,7 +1892,7 @@ keymap symbol and a list of keybindings."
   (interactive)
   (if (straight-extra-inside-use-package-p)
       (progn (straight-extra-insert-keymap))
-    (when-let ((sexp (sexp-at-point)))
+    (when-let* ((sexp (sexp-at-point)))
       (if
           (when (eq (car-safe sexp)
                     (mapcar #'intern-soft
@@ -2016,7 +2016,7 @@ Argument README is the path to the readme file to be parsed."
 
 Argument PACKAGE is the name of the package for which to find and open the
 README file."
-  (when-let ((files (straight-extra-locate-doc-files
+  (when-let* ((files (straight-extra-locate-doc-files
                      package))
              (file (car files)))
     (straight-extra-file-visit file)
@@ -2114,7 +2114,7 @@ provided, the first FILE in FILES is used as the starting point."
 
 Argument PACKAGE is a string or symbol representing the package for which to
 find and display the README file in another window."
-  (when-let ((files (straight-extra-locate-doc-files
+  (when-let* ((files (straight-extra-locate-doc-files
                      package))
              (file (car files)))
     (find-file-other-window file)
@@ -2239,7 +2239,7 @@ declaration should be inserted. If nil, it is inserted at the end of the buffer.
          (straight-use-package symb))))
     (require symb nil t)
     (unless installed
-      (when-let ((dest
+      (when-let* ((dest
                   (cond ((eq outfile 'no-write)
                          nil)
                         ((and outfile)
@@ -2451,13 +2451,13 @@ Optional argument N is an integer specifying the number of times to move; it
 defaults to 1."
   (with-syntax-table emacs-lisp-mode-syntax-table
     (unless n (setq n 1))
-    (when-let ((str-start (nth 8 (syntax-ppss (point)))))
+    (when-let* ((str-start (nth 8 (syntax-ppss (point)))))
       (goto-char str-start))
     (let ((init-pos (point))
           (pos)
           (count n))
       (while (and (not (= count 0))
-                  (when-let ((end (ignore-errors
+                  (when-let* ((end (ignore-errors
                                     (funcall fn)
                                     (point))))
                     (unless (= end (or pos init-pos))
@@ -2508,7 +2508,7 @@ Argument PACKAGE is a symbol or string representing the package to annotate."
                 straight-extra-melpa-packages-archive-alist))
          (props (alist-get 'props item))
          (parts (list
-                 (when-let ((year (car (mapcar #'number-to-string
+                 (when-let* ((year (car (mapcar #'number-to-string
                                                (append
                                                 (alist-get 'ver item)
                                                 nil)))))
@@ -2871,7 +2871,7 @@ and the package list is refreshed."
 (defun straight-extra-browse-in-other-window ()
   "Open a URL from minibuffer selection in another window."
   (interactive)
-  (when-let ((current
+  (when-let* ((current
               (straight-extra-minibuffer-item)))
     (run-with-timer 0 nil
                     #'straight-extra-browse-action
@@ -2887,7 +2887,7 @@ and the package list is refreshed."
 (defun straight-extra-browse-preview ()
   "Preview repository in browser based on minibuffer selection."
   (interactive)
-  (when-let ((current
+  (when-let* ((current
               (straight-extra-minibuffer-item)))
     (with-minibuffer-selected-window
       (straight-extra-browse-action
@@ -2956,7 +2956,7 @@ BUTTON is located."
         (switch-to-buffer-other-window buff)
         (when (with-current-buffer buff
                 (yes-or-no-p "Remove?"))
-          (when-let ((found (seq-find
+          (when-let* ((found (seq-find
                              (lambda (it)
                                (let ((id (car it)))
                                  (equal id
@@ -3086,7 +3086,7 @@ Optional argument RECIPE is a plist describing the package."
     (when (eq host 'sourcehut)
       (setq repo (concat "~" repo)))
     (let ((url
-           (if-let ((domain (car (alist-get host
+           (if-let* ((domain (car (alist-get host
                                             straight-hosts))))
                (format "https://%s/%s" domain repo)
              (when repo (format "%s" repo)))))
@@ -3144,7 +3144,7 @@ to browse."
                 (when (eq host 'sourcehut)
                   (setq repo (concat "~" repo)))
                 (let ((url
-                       (if-let ((domain (car (alist-get host
+                       (if-let* ((domain (car (alist-get host
                                                         straight-hosts))))
                            (format "https://%s/%s" domain repo)
                          (when repo (format "%s" repo)))))
@@ -3193,7 +3193,7 @@ Optional argument FN is a function to be called in the other window.
 
 Remaining arguments ARGS are the arguments passed to the function FN."
   (select-window
-   (if-let ((xwidget-buff
+   (if-let* ((xwidget-buff
              (car
               (straight-extra-buffers-in-mode
                'xwidget-webkit-mode
@@ -3295,7 +3295,7 @@ Argument URL is the GitHub repository url as a string."
                  (when (eq (process-status proc) 'exit)
                    (with-current-buffer (process-buffer proc)
                      (goto-char (point-min))
-                     (when-let ((wnd (and (buffer-live-p buffer)
+                     (when-let* ((wnd (and (buffer-live-p buffer)
                                           (get-buffer-window buffer))))
                        (set-window-point wnd (point-min)))
                      (if (save-excursion
@@ -3444,7 +3444,7 @@ to confirm the directory."
 
 (defun straight-extra-use-package-at-point-p ()
   "Check if point is on a `use-package' form."
-  (when-let ((sexp (straight-extra-sexp-at-point)))
+  (when-let* ((sexp (straight-extra-sexp-at-point)))
     (and
      (car-safe sexp)
      (symbolp (car-safe sexp))
@@ -3464,7 +3464,7 @@ to confirm the directory."
 
 (defun straight-extra-get-current-package-name ()
   "Extract the current package name at point."
-  (when-let ((beg (straight-extra-inside-use-package-p)))
+  (when-let* ((beg (straight-extra-inside-use-package-p)))
     (save-excursion
       (goto-char beg)
       (down-list 1)
@@ -3473,7 +3473,7 @@ to confirm the directory."
 
 (defun straight-extra-get-use-package-bounds ()
   "Find bounds of the current `use-package' form."
-  (when-let ((start (straight-extra-inside-use-package-p)))
+  (when-let* ((start (straight-extra-inside-use-package-p)))
     (save-excursion
       (goto-char start)
       (straight-extra-move-with 'forward-sexp)
@@ -3507,7 +3507,7 @@ declaration."
   "Extract KEYWORD value sexps from a string.
 
 Optional argument KEYWORD is a keyword symbol for which to get the value sexps."
-  (when-let ((str (straight-extra-get-keyword-value keyword)))
+  (when-let* ((str (straight-extra-get-keyword-value keyword)))
     (pcase keyword
       ((or :bind :bind*)
        (let ((val (car (straight-extra-read-string str))))
@@ -3673,10 +3673,10 @@ Argument PACKAGE is the name of the package to annotate."
                                           package)
                                          ""))))
       (when (string-empty-p melpa-descr)
-        (when-let ((vect (cdr
-                          (when (boundp 'package--builtins)
-                            (assq (intern package)
-                                  package--builtins)))))
+        (when-let* ((vect (cdr
+                           (when (boundp 'package--builtins)
+                             (assq (intern package)
+                                   package--builtins)))))
           (setq melpa-descr (car (last (if (vectorp vect)
                                            (append vect nil)
                                          vect))))))
@@ -3714,7 +3714,7 @@ for in `use-package' calls."
                     'symbols)
                    nil t 1)
               (straight-extra-backward-up-list))
-          (when-let ((sexp (straight-extra-sexp-at-point)))
+          (when-let* ((sexp (straight-extra-sexp-at-point)))
             (when (and
                    (symbolp (car-safe sexp))
                    (member (symbol-name (car-safe sexp))
@@ -3895,7 +3895,7 @@ symbol."
 (defun straight-extra-jump-to-config-other-window ()
   "Open package config in another window."
   (interactive)
-  (when-let ((package (straight-extra-minibuffer-item)))
+  (when-let* ((package (straight-extra-minibuffer-item)))
     (let* ((wind (minibuffer-selected-window))
            (buff (window-buffer wind)))
       (add-to-history 'straight-extra-installed-packages-history package)
@@ -3926,7 +3926,7 @@ symbol."
 (defun straight-extra-installed-package-preview-command ()
   "Preview installed package details."
   (interactive)
-  (when-let ((package
+  (when-let* ((package
               (straight-extra-minibuffer-item)))
     (with-minibuffer-selected-window
       (funcall
@@ -4033,7 +4033,7 @@ Argument PACKAGE is the name of the package to pull and rebuild."
     (catch 'found
       (while remotes
         (let ((remote (car remotes)))
-          (when-let ((url (with-temp-buffer
+          (when-let* ((url (with-temp-buffer
                             (let
                                 ((status (ignore-errors (call-process "git" nil
                                                                       t
@@ -4080,7 +4080,7 @@ Argument PACKAGE is the name of the package to pull and rebuild."
 
 (defun straight-extra-current-recipe ()
   "Retrieve recipe for current package from cache."
-  (when-let ((package (straight-extra-get-current-package-name)))
+  (when-let* ((package (straight-extra-get-current-package-name)))
     (ignore-errors (gethash (symbol-name package) straight--recipe-cache))))
 
 (defvar straight-extra-keywords-inserters-alist
